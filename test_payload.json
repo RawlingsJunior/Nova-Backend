@@ -1,0 +1,9 @@
+{
+  "fullName": "Test User",
+  "phone": "0240000000",
+  "email": "test@example.com",
+  "service": "General Eye Exam",
+  "appointmentDate": "2024-06-01",
+  "appointmentTime": "10:00",
+  "notes": "Testing from CLI"
+}
