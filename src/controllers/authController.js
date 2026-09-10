@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
 const db = require('../config/db');
 const { sendSMS } = require('../services/smsService');
 const { sendEmail } = require('../services/emailService');
@@ -743,6 +744,137 @@ const resetPassword = async (req, res) => {
   }
 };
 
+const googleLogin = async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) {
+    return res.status(400).json({ message: 'Google ID token is required' });
+  }
+
+  try {
+    // Verify ID token with Google API
+    const googleVerifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`;
+    const verifyResponse = await axios.get(googleVerifyUrl);
+    const payload = verifyResponse.data;
+
+    // Verify token came from the correct Google Client ID (optional but recommended in production)
+    const expectedClientId = process.env.GOOGLE_CLIENT_ID;
+    if (expectedClientId && expectedClientId !== 'your_google_client_id_here' && payload.aud !== expectedClientId) {
+      console.warn(`[Google Auth] Audience mismatch: expected ${expectedClientId}, got ${payload.aud}`);
+    }
+
+    if (!payload.email) {
+      return res.status(400).json({ message: 'Invalid token payload: Email missing' });
+    }
+
+    const email = payload.email.toLowerCase().trim();
+    const fullName = payload.name || 'Nova Patient';
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Check if user exists in the database
+      const userQuery = `
+        SELECT u.id, u.email, r.role, p.full_name
+        FROM users u
+        LEFT JOIN user_roles r ON u.id = r.user_id
+        LEFT JOIN profiles p ON u.id = p.id
+        WHERE u.email = $1`;
+      const userResult = await client.query(userQuery, [email]);
+      
+      let userId;
+      let role = 'user';
+      let nameToUse = fullName;
+
+      if (userResult.rows.length > 0) {
+        // User exists, log them in
+        userId = userResult.rows[0].id;
+        role = userResult.rows[0].role || 'user';
+        nameToUse = userResult.rows[0].full_name || fullName;
+      } else {
+        // User doesn't exist, create a new patient account automatically!
+        // Generate a random password hash since they log in via Google
+        const salt = await bcrypt.genSalt(10);
+        const randomPassword = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const hashedPassword = await bcrypt.hash(randomPassword, salt);
+
+        // Create user in 'users' table
+        const newUser = await client.query(
+          'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
+          [email, hashedPassword]
+        );
+        userId = newUser.rows[0].id;
+
+        // Create profile in 'profiles' table with registration_completed = FALSE, so they complete profile details on dashboard
+        await client.query(
+          `INSERT INTO profiles (id, full_name, email, registration_completed) 
+           VALUES ($1, $2, $3, FALSE)`,
+          [userId, fullName, email]
+        );
+
+        // Create initial patient medical history
+        await client.query(
+          `INSERT INTO patient_medical_history (patient_id, ocular_history, systemic_conditions, current_medications, family_eye_history, allergies, updated_at)
+           VALUES ($1, '', '', '', '', '', CURRENT_TIMESTAMP)`,
+          [userId]
+        );
+
+        // Assign role
+        const isAdminEmail = await client.query('SELECT * FROM pending_admin_emails WHERE email = $1', [email]);
+        if (isAdminEmail.rows.length > 0) {
+          role = 'admin';
+          await client.query('DELETE FROM pending_admin_emails WHERE email = $1', [email]);
+        }
+
+        await client.query(
+          'INSERT INTO user_roles (user_id, role) VALUES ($1, $2)',
+          [userId, role]
+        );
+
+        // Notify Admins
+        notifyAdmins(
+          'New Google Registration',
+          `${fullName} (${email}) has registered using Google.`,
+          'user_activity'
+        );
+      }
+
+      await client.query('COMMIT');
+
+      // Generate local JWT token for session
+      const tokenPayload = { id: userId, role: role };
+      const localToken = jwt.sign(tokenPayload, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
+
+      // Notify Admins for login
+      notifyAdmins(
+        'User Login (Google)',
+        `${nameToUse} has logged in via Google.`,
+        'user_activity'
+      );
+
+      res.json({
+        token: localToken,
+        user: {
+          id: userId,
+          email: email,
+          role: role,
+          fullName: nameToUse
+        }
+      });
+
+    } catch (dbErr) {
+      await client.query('ROLLBACK');
+      throw dbErr;
+    } finally {
+      client.release();
+    }
+
+  } catch (err) {
+    console.error('Google login error:', err.message);
+    res.status(401).json({ message: 'Google authentication failed or token expired' });
+  }
+};
+
 module.exports = { 
   register, 
   login, 
@@ -754,5 +886,6 @@ module.exports = {
   sendOtp,
   sendResetOtp,
   verifyResetOtp,
-  resetPassword
+  resetPassword,
+  googleLogin
 };

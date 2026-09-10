@@ -61,21 +61,15 @@ const initializeDatabase = async () => {
       VALUES ('team', '{
         "members": [
           {
-            "name": "Dr. Sarah Owusu",
+            "name": "Dr. Sylvester Kyeremeh",
             "title": "Lead Optometrist & Vision Specialist",
-            "bio": "Dr. Sarah Owusu has over 12 years of clinical optometry experience, specializing in pediatric eye care and advanced vision therapy.",
+            "bio": "Dr. Sylvester Kyeremeh has extensive clinical optometry experience, specializing in pediatric eye care, advanced vision therapy, and premium ocular diagnostics.",
             "photo": ""
           },
           {
-            "name": "Dr. Emmanuel Boateng",
-            "title": "Senior Optometrist & Low Vision Expert",
-            "bio": "Dr. Emmanuel Boateng is an expert in ocular disease diagnostics and low vision rehabilitation, dedicated to restoring functional sight.",
-            "photo": ""
-          },
-          {
-            "name": "Dr. Linda Mensah",
-            "title": "Optometrist & Contact Lens Specialist",
-            "bio": "Dr. Linda Mensah focuses on custom contact lens fittings, corneal diseases, and dry eye therapy using advanced clinical procedures.",
+            "name": "Dr. Elizabeth Mana Akpakli",
+            "title": "Senior Optometrist & Ocular Health Specialist",
+            "bio": "Dr. Elizabeth Mana Akpakli is an expert in ocular disease diagnostics, low vision rehabilitation, and custom contact lens fittings.",
             "photo": ""
           }
         ]

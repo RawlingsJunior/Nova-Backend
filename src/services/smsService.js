@@ -3,11 +3,11 @@ const axios = require('axios');
 const db = require('../config/db');
 
 const sendSMS = async (phoneNumber, message) => {
-  const apiKey = process.env.ARKESEL_API_KEY;
-  const senderId = process.env.ARKESEL_SENDER_ID || 'NovaCare';
+  const apiKey = process.env.SMSONLINEGH_API_KEY || process.env.ARKESEL_API_KEY;
+  const senderId = process.env.SMSONLINEGH_SENDER_ID || process.env.ARKESEL_SENDER_ID || 'NovaCare';
 
-  if (!apiKey || apiKey === 'your_arkesel_api_key' || !apiKey) {
-    console.warn('[SMS] Arkesel API key not configured. SMS not sent.');
+  if (!apiKey || apiKey === 'your_smsonlinegh_api_key' || apiKey === 'your_arkesel_api_key') {
+    console.warn('[SMS] SMSOnlineGH API key not configured. SMS not sent.');
     return { success: false, message: 'API key missing' };
   }
 
@@ -22,24 +22,48 @@ const sendSMS = async (phoneNumber, message) => {
 
   try {
     // 2. Ensure Sender ID is alphanumeric and max 11 characters
-    // Arkesel and most providers fail if there are spaces or special characters
     let finalSenderId = senderId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 11);
     if (!finalSenderId) finalSenderId = 'NovaCare';
 
-    console.log(`[SMS] Attempting to send to ${cleanNumber} via Arkesel V2 (Sender: ${finalSenderId})...`);
+    console.log(`[SMS] Attempting to send to ${cleanNumber} via SMSOnlineGH v5 (Sender: ${finalSenderId})...`);
 
-    const response = await axios.post('https://sms.arkesel.com/api/v2/sms/send', {
-      recipients: [cleanNumber],
-      sender: finalSenderId,
-      message: message,
-    }, {
-      headers: {
-        'api-key': apiKey
+    const response = await axios.post(
+      'https://api.smsonlinegh.com/v5/message/sms/send',
+      {
+        sender: finalSenderId,
+        message: message,
+        recipients: [cleanNumber],
       },
-      timeout: 30000 
-    });
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `key ${apiKey}`
+        },
+        timeout: 30000 
+      }
+    );
 
-    console.log(`[SMS] Arkesel Response:`, response.data);
+    console.log(`[SMS] SMSOnlineGH Response:`, response.data);
+
+    // SMSOnlineGH v5 returns { handshake: { id: 0, label: "HSHK_OK" }, data: ... }
+    const isSuccess = response.data?.handshake ? response.data.handshake.id === 0 : true;
+
+    if (!isSuccess) {
+      const errorMsg = response.data?.handshake?.label || 'SMS dispatch failed';
+      console.error(`[SMS] SMSOnlineGH returned non-success handshake: ${errorMsg}`);
+
+      try {
+        await db.query(
+          'INSERT INTO sms_logs (phone, message, status, provider_response) VALUES ($1, $2, $3, $4)',
+          [cleanNumber, message, 'failed', JSON.stringify(response.data)]
+        );
+      } catch (dbErr) {
+        console.error('[SMS] Failed to log failed SMS to database:', dbErr.message);
+      }
+
+      return { success: false, error: errorMsg, data: response.data };
+    }
 
     // Log to database
     try {
@@ -54,7 +78,7 @@ const sendSMS = async (phoneNumber, message) => {
     return { success: true, data: response.data };
   } catch (err) {
     const errorMsg = err.response ? JSON.stringify(err.response.data) : err.message;
-    console.error(`[SMS] Error sending via Arkesel: ${errorMsg}`);
+    console.error(`[SMS] Error sending via SMSOnlineGH: ${errorMsg}`);
 
     // Log failure to database
     try {

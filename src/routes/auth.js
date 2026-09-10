@@ -11,7 +11,8 @@ const {
   sendOtp,
   sendResetOtp,
   verifyResetOtp,
-  resetPassword
+  resetPassword,
+  googleLogin
 } = require('../controllers/authController');
 const { getPendingAdmins, addPendingAdmin, removePendingAdmin } = require('../controllers/adminAuthController');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
@@ -25,6 +26,7 @@ router.post('/verify-reset-otp', verifyResetOtp);
 router.post('/reset-password', resetPassword);
 router.post('/register', registerValidation, validate, register);
 router.post('/login', loginValidation, validate, login);
+router.post('/google', googleLogin);
 
 // Protected Auth Routes
 router.get('/me', authMiddleware, getMe);
