@@ -340,7 +340,12 @@ const updateAppointment = async (req, res) => {
               </div>
             </div>
           `
-        });
+            });
+            console.log(`[Status Alert] Email successfully sent to ${updatedAppointment.email}`);
+          } catch (emailErr) {
+            console.error('[Status Alert] Email send error:', emailErr.message);
+          }
+        }
       }
     } catch (notifyErr) {
       console.error('Status/Reschedule notification failed:', notifyErr);
