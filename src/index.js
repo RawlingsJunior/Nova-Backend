@@ -10,6 +10,7 @@ const hpp = require('hpp');
 const { apiLimiter, authLimiter, bookingLimiter, chatbotLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
+app.set('trust proxy', 1); // Enable proxy forwarding for Render/reverse proxies
 const PORT = process.env.PORT || 5000;
 
 // Initialize Database
@@ -78,7 +79,7 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/update-password', authLimiter);
 app.use('/api/appointments', (req, res, next) => {
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+  if (req.method === 'POST') {
     return bookingLimiter(req, res, next);
   }
   next();

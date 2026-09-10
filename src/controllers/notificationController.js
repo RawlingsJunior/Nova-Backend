@@ -27,6 +27,19 @@ const markAsRead = async (req, res) => {
   }
 };
 
+const markAllAsRead = async (req, res) => {
+  try {
+    await db.query(
+      'UPDATE notifications SET is_read = TRUE WHERE user_id = $1',
+      [req.user.id]
+    );
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    console.error('Error marking all read:', err);
+    res.status(500).send('Server error');
+  }
+};
+
 const getAllNotifications = async (req, res) => {
   try {
     const result = await db.query(
@@ -54,5 +67,6 @@ module.exports = {
   getNotifications, 
   getAllNotifications, 
   markAsRead, 
+  markAllAsRead,
   createNotification 
 };

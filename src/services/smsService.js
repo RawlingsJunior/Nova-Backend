@@ -31,8 +31,11 @@ const sendSMS = async (phoneNumber, message) => {
       'https://api.smsonlinegh.com/v5/message/sms/send',
       {
         sender: finalSenderId,
-        message: message,
-        recipients: [cleanNumber],
+        text: message,
+        type: 0,
+        destinations: [cleanNumber],
+        to: [cleanNumber],
+        recipients: [cleanNumber]
       },
       {
         headers: {
@@ -44,14 +47,20 @@ const sendSMS = async (phoneNumber, message) => {
       }
     );
 
-    console.log(`[SMS] SMSOnlineGH Response:`, response.data);
+    console.log(`[SMS] SMSOnlineGH Response:`, JSON.stringify(response.data));
 
-    // SMSOnlineGH v5 returns { handshake: { id: 0, label: "HSHK_OK" }, data: ... }
-    const isSuccess = response.data?.handshake ? response.data.handshake.id === 0 : true;
+    // SMSOnlineGH v5 returns { handshake: { id: 0, label: "HSHK_OK" }, data: { destinations: [...] } }
+    const handshakeSuccess = response.data?.handshake ? response.data.handshake.id === 0 : true;
+    const dest = response.data?.data?.destinations?.[0];
+    const destStatus = dest?.status;
+    const isDestRejected = destStatus && destStatus.label && destStatus.label.startsWith('DS_REJECTED');
 
-    if (!isSuccess) {
-      const errorMsg = response.data?.handshake?.label || 'SMS dispatch failed';
-      console.error(`[SMS] SMSOnlineGH returned non-success handshake: ${errorMsg}`);
+    if (!handshakeSuccess || isDestRejected) {
+      const errorMsg = isDestRejected 
+        ? `${destStatus.label} (${destStatus.id})`
+        : (response.data?.handshake?.label || 'SMS dispatch failed');
+      
+      console.error(`[SMS] SMSOnlineGH rejected message: ${errorMsg}`);
 
       try {
         await db.query(
