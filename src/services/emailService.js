@@ -58,6 +58,24 @@ const sendEmail = async ({ to, subject, html, text = undefined }) => {
     } catch (err) {
       const errorMsg = err.response ? JSON.stringify(err.response.data) : err.message;
       console.error('Error sending email via SendGrid:', errorMsg);
+
+      if (process.env.RESEND_API_KEY) {
+        console.log('[Email] Attempting fallback to Resend provider...');
+        try {
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const result = await resend.emails.send({
+            from: fromInfo,
+            to: [to],
+            subject: subject,
+            html: html,
+            text: textPart
+          });
+          return result;
+        } catch (resendErr) {
+          console.error('[Email] Resend fallback error:', resendErr.message);
+        }
+      }
+
       throw new Error(`SendGrid API error: ${errorMsg}`);
     }
   } else {

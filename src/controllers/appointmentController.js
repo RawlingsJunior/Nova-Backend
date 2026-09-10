@@ -67,79 +67,116 @@ const createAppointment = async (req, res) => {
 
     // Initial Confirmation Logic
     try {
-      const formattedDate = new Date(appointmentDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      const formattedDate = new Date(appointmentDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
       const typeLabel = (appointmentType || 'in_person') === 'virtual' ? 'Virtual (Online Consultation)' : 'In-Person (Clinic Visit)';
       const doctorLabel = doctorName ? ` with ${doctorName}` : '';
-      const message = `NOVA EYE CARE: Hello ${fullName}, your ${typeLabel} appointment${doctorLabel} for ${service} is booked for ${formattedDate} at ${appointmentTime}. Thank you for choosing us!`;
+      const message = `NOVA EYE CARE: Hello ${fullName}, your ${typeLabel} appointment${doctorLabel} for ${service} is booked for ${formattedDate} at ${appointmentTime}. We look forward to welcoming you! Location: Abuakwa, Kumasi. Tel: 0544172089.`;
       
       // 1. In-App Notification
       if (userId) {
-        await db.query(
-          'INSERT INTO notifications (user_id, type, title, message) VALUES ($1, $2, $3, $4)',
-          [userId, 'appointment', 'Appointment Booked', message]
-        );
+        try {
+          await db.query(
+            'INSERT INTO notifications (user_id, type, title, message) VALUES ($1, $2, $3, $4)',
+            [userId, 'appointment', 'Appointment Booked', message]
+          );
+          console.log(`[Booking Alert] Created in-app notification for user ${userId}`);
+        } catch (inAppErr) {
+          console.error('[Booking Alert] In-app notification error:', inAppErr.message);
+        }
       }
 
-      // 2. Send SMS
-      if (phone) await sendSMS(phone, message);
+      // 2. Send SMS Alert
+      if (phone) {
+        try {
+          console.log(`[Booking Alert] Dispatching SMS confirmation to ${phone}...`);
+          const smsRes = await sendSMS(phone, message);
+          if (smsRes?.success) {
+            console.log(`[Booking Alert] SMS successfully sent to ${phone}`);
+          } else {
+            console.warn(`[Booking Alert] SMS delivery response:`, smsRes?.error || smsRes?.message || 'Pending');
+          }
+        } catch (smsErr) {
+          console.error('[Booking Alert] SMS send error:', smsErr.message);
+        }
+      }
       
-      // 3. Send Email
-      if (email) await sendEmail({
-        to: email,
-        subject: 'Appointment Confirmation - Nova Eye Care',
-        html: `
-          <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);">
-            <div style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); padding: 36px 30px; text-align: center; color: #ffffff;">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Appointment Booked!</h1>
-              <p style="margin: 6px 0 0 0; font-size: 15px; color: #bfdbfe; font-weight: 500;">Thank you for scheduling with Nova Eye Care</p>
-            </div>
-            
-            <div style="padding: 40px 30px; color: #334155; line-height: 1.6; font-size: 15px;">
-              <p style="margin-top: 0;">Hello <strong style="color: #0f172a;">${fullName}</strong>,</p>
-              <p>Your appointment has been successfully scheduled. Below are the details of your visit:</p>
-              
-              <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
-                <h3 style="margin: 0 0 16px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Visit Details</h3>
-                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                  <tr>
-                    <td style="padding: 8px 0; color: #64748b; width: 120px;">Service</td>
-                    <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${service}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #64748b;">Date</td>
-                    <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${appointmentDate}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #64748b;">Time</td>
-                    <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${appointmentTime}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #64748b;">Type</td>
-                    <td style="padding: 8px 0; color: #0f172a; font-weight: 600; text-transform: capitalize;">${appointmentType || 'In-Person'}</td>
-                  </tr>
-                </table>
-              </div>
+      // 3. Send Email Alert
+      if (email) {
+        try {
+          console.log(`[Booking Alert] Dispatching Email confirmation to ${email}...`);
+          const emailRes = await sendEmail({
+            to: email,
+            subject: 'Appointment Confirmation - Nova Eye Care',
+            html: `
+              <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);">
+                <div style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); padding: 36px 30px; text-align: center; color: #ffffff;">
+                  <h1 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Appointment Booked!</h1>
+                  <p style="margin: 6px 0 0 0; font-size: 15px; color: #bfdbfe; font-weight: 500;">Thank you for scheduling with Nova Eye Care</p>
+                </div>
+                
+                <div style="padding: 40px 30px; color: #334155; line-height: 1.6; font-size: 15px;">
+                  <p style="margin-top: 0;">Hello <strong style="color: #0f172a;">${fullName}</strong>,</p>
+                  <p>Your appointment has been successfully scheduled. Below are the details of your visit:</p>
+                  
+                  <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
+                    <h3 style="margin: 0 0 16px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 700; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">Visit Details</h3>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                      <tr>
+                        <td style="padding: 8px 0; color: #64748b; width: 120px;">Service</td>
+                        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${service}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Date</td>
+                        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${formattedDate}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Time</td>
+                        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${appointmentTime}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Type</td>
+                        <td style="padding: 8px 0; color: #0f172a; font-weight: 600; text-transform: capitalize;">${typeLabel}</td>
+                      </tr>
+                      ${doctorName ? `
+                      <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Optometrist</td>
+                        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${doctorName}</td>
+                      </tr>` : ''}
+                      <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Location</td>
+                        <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">
+                          ${(appointmentType || 'in_person') === 'virtual' ? 'Virtual (Meeting link will be shared prior to call)' : 'GE20 Dolores St, Kan Royal Filling Station, Abuakwa, Kumasi'}
+                        </td>
+                      </tr>
+                    </table>
+                  </div>
 
-              <div style="background-color: #fef3c7; border-left: 4px solid #d97706; border-radius: 4px; padding: 16px; margin: 24px 0; color: #92400e; font-size: 13px; font-weight: 500;">
-                <strong style="display: block; margin-bottom: 4px;">Important Instructions:</strong>
-                Please arrive at the clinic 10 minutes prior to your scheduled time. Remember to bring a valid ID and any optical prescriptions or reports.
-              </div>
+                  <div style="background-color: #fef3c7; border-left: 4px solid #d97706; border-radius: 4px; padding: 16px; margin: 24px 0; color: #92400e; font-size: 13px; font-weight: 500;">
+                    <strong style="display: block; margin-bottom: 4px;">Important Instructions:</strong>
+                    Please arrive 10 minutes prior to your scheduled time. Remember to bring a valid ID and any optical prescriptions, previous eye drops, or eyeglasses.
+                  </div>
 
-              <div style="text-align: center; margin: 32px 0 12px 0;">
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="display: inline-block; background-color: #0f172a; color: #ffffff; font-weight: 700; font-size: 14px; padding: 12px 28px; border-radius: 8px; text-decoration: none;">
-                  Manage Your Bookings
-                </a>
-              </div>
-            </div>
+                  <div style="text-align: center; margin: 32px 0 12px 0;">
+                    <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/dashboard" style="display: inline-block; background-color: #0f172a; color: #ffffff; font-weight: 700; font-size: 14px; padding: 12px 28px; border-radius: 8px; text-decoration: none;">
+                      Manage Your Bookings
+                    </a>
+                  </div>
+                </div>
 
-            <div style="background-color: #f8fafc; border-top: 1px solid #f1f5f9; padding: 30px; text-align: center; font-size: 12px; color: #64748b; line-height: 1.5;">
-              <p style="margin: 0 0 8px 0; font-weight: 600; color: #475569;">Nova Eye Care Portal</p>
-              <p style="margin: 0;">If you need to reschedule or cancel, please do so at least 24 hours in advance via the dashboard, or call us directly.</p>
-              <p style="margin: 12px 0 0 0; font-size: 11px; color: #94a3b8;">&copy; 2026 Nova Eye Care. All rights reserved.</p>
-            </div>
-          </div>
-        `
-      });
+                <div style="background-color: #f8fafc; border-top: 1px solid #f1f5f9; padding: 30px; text-align: center; font-size: 12px; color: #64748b; line-height: 1.5;">
+                  <p style="margin: 0 0 8px 0; font-weight: 600; color: #475569;">Nova Eye Care Clinic</p>
+                  <p style="margin: 0;">Abuakwa, Kumasi, Ghana | Phones: +233 544 172 089 / +233 246 613 184</p>
+                  <p style="margin: 4px 0 0 0;">If you need to reschedule or cancel, please do so at least 24 hours in advance via your portal or call us directly.</p>
+                  <p style="margin: 12px 0 0 0; font-size: 11px; color: #94a3b8;">&copy; 2026 Nova Eye Care. All rights reserved.</p>
+                </div>
+              </div>
+            `
+          });
+          console.log(`[Booking Alert] Email successfully sent to ${email}`);
+        } catch (emailErr) {
+          console.error('[Booking Alert] Email send error:', emailErr.message);
+        }
+      }
     } catch (notifyErr) {
       console.error('Notification failed:', notifyErr);
     }
@@ -239,14 +276,24 @@ const updateAppointment = async (req, res) => {
           );
         }
 
-        // 2. Send SMS
-        if (updatedAppointment.phone) await sendSMS(updatedAppointment.phone, statusMessage);
+        // 2. Send SMS Alert
+        if (updatedAppointment.phone) {
+          try {
+            console.log(`[Status Alert] Dispatching SMS update to ${updatedAppointment.phone}...`);
+            await sendSMS(updatedAppointment.phone, statusMessage);
+          } catch (smsErr) {
+            console.error('[Status Alert] SMS send error:', smsErr.message);
+          }
+        }
         
-        // 3. Send Email
-        if (updatedAppointment.email) await sendEmail({
-          to: updatedAppointment.email,
-          subject: titleText,
-          html: `
+        // 3. Send Email Alert
+        if (updatedAppointment.email) {
+          try {
+            console.log(`[Status Alert] Dispatching Email update to ${updatedAppointment.email}...`);
+            await sendEmail({
+              to: updatedAppointment.email,
+              subject: titleText,
+              html: `
             <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);">
               <div style="background: ${statusColors.gradient}; padding: 36px 30px; text-align: center; color: #ffffff;">
                 <h1 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">${statusColors.title}</h1>
