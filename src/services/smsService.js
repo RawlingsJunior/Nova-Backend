@@ -3,12 +3,13 @@ const axios = require('axios');
 const db = require('../config/db');
 
 const sendSMS = async (phoneNumber, message) => {
-  const apiKey = process.env.SMSONLINEGH_API_KEY;
-  const senderId = process.env.SMSONLINEGH_SENDER_ID || 'NovaCare';
+  let rawKey = process.env.SMSONLINEGH_API_KEY || '1106ef1c668c2471d659a2debfb40ea2915cc28dc42bdac882529c75766b42ce';
+  const apiKey = (rawKey.match(/[a-f0-9]{64}/i)?.[0] || rawKey).trim();
+  const senderId = (process.env.SMSONLINEGH_SENDER_ID || 'NovaCare').trim();
 
   if (!apiKey || apiKey === 'your_smsonlinegh_api_key') {
     console.warn('[SMS] SMSOnlineGH API key not configured. SMS not sent.');
-    return { success: false, message: 'SMSOnlineGH API key is not configured in server environment variables (Render).' };
+    return { success: false, message: 'SMSOnlineGH API key is not configured.' };
   }
 
   // 1. Clean and format phone number
