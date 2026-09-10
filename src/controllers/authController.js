@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+/** @type {any} */
 const axios = require('axios');
 const db = require('../config/db');
 const { sendSMS } = require('../services/smsService');
@@ -520,27 +521,19 @@ const sendOtp = async (req, res) => {
     }
   }
 
-  // If the chosen channel failed to deliver, return error (only strict in production)
+  // If the chosen channel failed to deliver, return error
   if (targetChannel === 'sms' && !sentViaSMS) {
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(500).json({ 
-        message: 'Failed to deliver OTP verification code via SMS',
-        errors: { sms: smsError }
-      });
-    } else {
-      console.warn(`[SMS] Development Mode Bypass: SMS delivery failed (${smsError}), but returning devOtp for testing.`);
-    }
+    return res.status(500).json({ 
+      message: 'Failed to deliver OTP verification code via SMS',
+      errors: { sms: smsError }
+    });
   }
 
   if (targetChannel === 'email' && !sentViaEmail) {
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(500).json({ 
-        message: 'Failed to deliver OTP verification code via Email',
-        errors: { email: emailError }
-      });
-    } else {
-      console.warn(`[EMAIL] Development Mode Bypass: Email delivery failed (${emailError}), but returning devOtp for testing.`);
-    }
+    return res.status(500).json({ 
+      message: 'Failed to deliver OTP verification code via Email',
+      errors: { email: emailError }
+    });
   }
 
   // 5. Create signed OTP token
@@ -556,13 +549,6 @@ const sendOtp = async (req, res) => {
     sentViaEmail,
     sentViaSMS
   };
-
-  // For testing ease in dev
-  const hasEmailConfig = (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'your_sendgrid_api_key') || 
-                         (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'your_resend_api_key');
-  if (process.env.NODE_ENV !== 'production' || !hasEmailConfig) {
-    responsePayload.devOtp = otp;
-  }
 
   res.json(responsePayload);
 };
@@ -676,12 +662,6 @@ const sendResetOtp = async (req, res) => {
       sentViaEmail,
       sentViaSMS
     };
-
-    const hasEmailConfig = (process.env.SENDGRID_API_KEY && process.env.SENDGRID_API_KEY !== 'your_sendgrid_api_key') || 
-                           (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== 'your_resend_api_key');
-    if (process.env.NODE_ENV !== 'production' || !hasEmailConfig) {
-      responsePayload.devOtp = otp;
-    }
 
     res.json(responsePayload);
   } catch (err) {
