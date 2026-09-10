@@ -470,62 +470,20 @@ const sendOtp = async (req, res) => {
 
   // 3. Generate 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  console.log(`[OTP] Generated OTP for ${email}/${phone || 'no-phone'} (Channel: ${channel || 'email'}): ${otp}`);
+  console.log(`[OTP] Generated OTP for ${phone} (${email}): ${otp}`);
 
-  // 4. Send OTP to BOTH Email and SMS simultaneously
-  let sentViaSMS = false;
-  let sentViaEmail = false;
-  let smsError = null;
-  let emailError = null;
+  // 4. Send OTP via SMS alone
+  const message = `Your Nova Eye Care OTP verification code is: ${otp}. It is valid for 10 minutes.`;
+  const smsResult = await sendSMS(phone, message);
 
-  // 4a. Send via SMS if phone is provided
-  if (phone) {
-    try {
-      const message = `Your Nova Eye Care OTP verification code is: ${otp}. It is valid for 10 minutes.`;
-      const smsResult = await sendSMS(phone, message);
-      if (smsResult.success) {
-        sentViaSMS = true;
-      } else {
-        smsError = smsResult.error || 'Failed to send SMS';
-      }
-    } catch (err) {
-      smsError = err.message;
-      console.error('Send OTP SMS error:', err);
-    }
-  }
-
-  // 4b. Send via Email if email is provided
-  if (email) {
-    try {
-      const emailResult = await sendEmail({
-        to: email,
-        subject: 'Your Nova Eye Care OTP Verification Code',
-        html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eaeaea; border-radius: 8px;">
-            <h2 style="color: #0070f3; text-align: center;">Nova Eye Care Portal</h2>
-            <hr style="border: 0; border-top: 1px solid #eaeaea; margin: 20px 0;" />
-            <p>Hello,</p>
-            <p>Thank you for choosing Nova Eye Care. To complete your account verification, please use the One-Time Password (OTP) below:</p>
-            <div style="background-color: #f0f7ff; border: 1px dashed #0070f3; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #0070f3; margin: 20px 0; border-radius: 4px;">
-              ${otp}
-            </div>
-            <p style="font-size: 13px; color: #666;">This code is valid for 10 minutes. If you did not request this, please ignore this email.</p>
-          </div>
-        `
-      });
-      console.log('[OTP] Send OTP Email result:', JSON.stringify(emailResult, null, 2));
-      sentViaEmail = true;
-    } catch (err) {
-      emailError = err.message;
-      console.error('Send OTP Email error:', err);
-    }
-  }
-
-  // Ensure at least one dispatch channel succeeded
-  if (!sentViaEmail && !sentViaSMS) {
-    return res.status(500).json({ 
-      message: 'Failed to deliver OTP verification code via Email or SMS',
-      errors: { email: emailError, sms: smsError }
+  if (!smsResult.success) {
+    console.error('Send OTP SMS error:', smsResult.error || smsResult.message);
+    const friendlyError = smsResult.error?.includes('DS_REJECTED_SENDER')
+      ? 'SMS Sender ID is awaiting registration/approval on SMSOnlineGH. Please check your SMS provider.'
+      : (smsResult.error || smsResult.message || 'Failed to deliver SMS verification code');
+    return res.status(400).json({ 
+      message: friendlyError,
+      error: smsResult.error
     });
   }
 
@@ -536,14 +494,12 @@ const sendOtp = async (req, res) => {
     { expiresIn: '10m' }
   );
 
-  const responsePayload = {
-    message: 'OTP sent successfully',
+  res.json({
+    message: 'OTP sent via SMS successfully',
     otpToken,
-    sentViaEmail,
-    sentViaSMS
-  };
-
-  res.json(responsePayload);
+    sentViaSMS: true,
+    sentViaEmail: false
+  });
 };
 
 const sendResetOtp = async (req, res) => {
