@@ -33,7 +33,10 @@ const testSMS = async () => {
       'https://api.smsonlinegh.com/v5/message/sms/send',
       {
         sender: senderId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 11),
-        message: 'Test SMS from Nova Eye Care via SMSOnlineGH',
+        text: 'Test SMS from Nova Eye Care via SMSOnlineGH',
+        type: 0,
+        destinations: [cleanNumber],
+        to: [cleanNumber],
         recipients: [cleanNumber]
       },
       {
