@@ -3,12 +3,12 @@ const axios = require('axios');
 const db = require('../config/db');
 
 const sendSMS = async (phoneNumber, message) => {
-  const apiKey = process.env.SMSONLINEGH_API_KEY || process.env.ARKESEL_API_KEY;
-  const senderId = process.env.SMSONLINEGH_SENDER_ID || process.env.ARKESEL_SENDER_ID || 'NovaCare';
+  const apiKey = process.env.SMSONLINEGH_API_KEY;
+  const senderId = process.env.SMSONLINEGH_SENDER_ID || 'NovaCare';
 
-  if (!apiKey || apiKey === 'your_smsonlinegh_api_key' || apiKey === 'your_arkesel_api_key') {
+  if (!apiKey || apiKey === 'your_smsonlinegh_api_key') {
     console.warn('[SMS] SMSOnlineGH API key not configured. SMS not sent.');
-    return { success: false, message: 'API key missing' };
+    return { success: false, message: 'SMSOnlineGH API key is not configured in server environment variables (Render).' };
   }
 
   // 1. Clean and format phone number
@@ -56,9 +56,14 @@ const sendSMS = async (phoneNumber, message) => {
     const isDestRejected = destStatus && destStatus.label && destStatus.label.startsWith('DS_REJECTED');
 
     if (!handshakeSuccess || isDestRejected) {
-      const errorMsg = isDestRejected 
-        ? `${destStatus.label} (${destStatus.id})`
-        : (response.data?.handshake?.label || 'SMS dispatch failed');
+      let errorMsg = response.data?.handshake?.label || 'SMS dispatch failed';
+      if (response.data?.handshake?.label === 'HSHK_ERR_UA_AUTH') {
+        errorMsg = 'SMSOnlineGH authentication failed. Please ensure SMSONLINEGH_API_KEY is configured in your Render Environment Variables.';
+      } else if (destStatus?.label === 'DS_REJECTED_SENDER_UNREGISTERED') {
+        errorMsg = 'The sender ID is awaiting approval in your SMSOnlineGH dashboard.';
+      } else if (isDestRejected) {
+        errorMsg = `${destStatus.label} (${destStatus.id})`;
+      }
       
       console.error(`[SMS] SMSOnlineGH rejected message: ${errorMsg}`);
 
