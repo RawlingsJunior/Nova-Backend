@@ -63,10 +63,33 @@ const createNotification = async (userId, title, message, type = 'info') => {
   }
 };
 
+const deleteNotification = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.query('DELETE FROM notifications WHERE id = $1', [id]);
+    res.json({ message: 'Notification deleted' });
+  } catch (err) {
+    console.error('Error deleting notification:', err);
+    res.status(500).send('Server error');
+  }
+};
+
+const clearNotifications = async (req, res) => {
+  try {
+    await db.query('DELETE FROM notifications');
+    res.json({ message: 'All notifications cleared successfully' });
+  } catch (err) {
+    console.error('Error clearing notifications:', err);
+    res.status(500).send('Server error');
+  }
+};
+
 module.exports = { 
   getNotifications, 
   getAllNotifications, 
   markAsRead, 
-  markAllAsRead,
-  createNotification 
+  markAllAsRead, 
+  createNotification,
+  deleteNotification,
+  clearNotifications
 };
