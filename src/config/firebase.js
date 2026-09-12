@@ -66,8 +66,12 @@ function initFirebase() {
       return defaultApp;
     }
 
-    // 4. If credentials not yet supplied, warn gracefully
-    console.warn('[Firebase Admin] No service account credentials detected (FIREBASE_SERVICE_ACCOUNT or FIREBASE_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY). Push notifications and Firebase token verification will operate in fallback mode until credentials are provided.');
+    // 4. Initialize with projectId for public token verification
+    const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'nova-eye-care';
+    defaultApp = initializeApp({ projectId });
+    isConfigured = true;
+    console.log('[Firebase Admin] Initialized with projectId for client token verification:', projectId);
+    return defaultApp;
   } catch (err) {
     console.error('[Firebase Admin] Initialization error:', err.message);
   }

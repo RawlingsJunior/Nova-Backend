@@ -57,7 +57,8 @@ app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 
 // 5. Security Middleware
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
 }));
 app.use(hpp()); // Prevent HTTP Parameter Pollution
 
