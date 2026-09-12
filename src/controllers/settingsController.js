@@ -37,9 +37,20 @@ const getSettings = async (req, res) => {
 const updateSettings = async (req, res) => {
   try {
     /** @type {any} */
-    const existing = await db.query('SELECT id FROM clinic_settings LIMIT 1');
+    const existing = await db.query('SELECT id, maintenance_mode FROM clinic_settings LIMIT 1');
     /** @type {any} */
     let result;
+
+    const reqMaint = req.body.maintenance_mode !== undefined ? req.body.maintenance_mode : req.body.maintenanceMode;
+    if (reqMaint !== undefined && req.user?.role !== 'super_admin') {
+      const currentMaint = existing.rows.length > 0 ? existing.rows[0].maintenance_mode : false;
+      if (Boolean(reqMaint) !== Boolean(currentMaint)) {
+        return res.status(403).json({
+          error: 'FORBIDDEN',
+          message: 'Only Super Administrators can toggle System Maintenance Mode.'
+        });
+      }
+    }
 
     if (existing.rows.length === 0) {
       result = await db.query(

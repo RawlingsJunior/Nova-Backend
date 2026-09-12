@@ -8,10 +8,10 @@ const {
   unlockUser
 } = require('../controllers/systemController');
 
-// All system monitoring endpoints require admin authentication
-router.get('/metrics', authMiddleware, adminMiddleware, getMetrics);
-router.get('/audit-logs', authMiddleware, adminMiddleware, getAuditLogs);
-router.get('/locked-users', authMiddleware, adminMiddleware, getLockedUsers);
-router.post('/unlock-user', authMiddleware, adminMiddleware, unlockUser);
+// All system monitoring & telemetry endpoints strictly require Super Admin authentication
+router.get('/metrics', authMiddleware, superAdminMiddleware, getMetrics);
+router.get('/audit-logs', authMiddleware, superAdminMiddleware, getAuditLogs);
+router.get('/locked-users', authMiddleware, superAdminMiddleware, getLockedUsers);
+router.post('/unlock-user', authMiddleware, superAdminMiddleware, unlockUser);
 
 module.exports = router;
