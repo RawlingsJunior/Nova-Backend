@@ -1,4 +1,4 @@
-const { rateLimit } = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const logger = require('../lib/logger');
 
 function createRateLimitHandler(type, message) {
@@ -23,13 +23,13 @@ function createRateLimitHandler(type, message) {
 /**
  * Key Generator aware of Carrier-Grade NAT (CGNAT) on mobile networks.
  * Authenticated users are tracked by account ID so users on shared cell towers
- * or clinic Wi-Fi do not collide. Unauthenticated visitors fall back to IP.
+ * or clinic Wi-Fi do not collide. Unauthenticated visitors fall back to IPv6-safe IP key.
  */
 const userOrIpKey = (req) => {
   if (req.user?.id) {
     return `user:${req.user.id}`;
   }
-  return req.ip;
+  return ipKeyGenerator(req.ip || '127.0.0.1');
 };
 
 // 1. General API Rate Limiter
@@ -39,6 +39,10 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: userOrIpKey,
+  validate: {
+    xForwardedForHeader: false,
+    default: true
+  },
   skip: (req) => {
     // Skip health checks and static favicon
     return req.path.startsWith('/health') || req.path === '/favicon.ico';
