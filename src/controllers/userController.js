@@ -56,9 +56,15 @@ const getAllUsers = async (req, res) => {
     const query = `
       SELECT 
         p.id, p.full_name, p.email, p.phone, r.role, p.created_at,
-        (SELECT COUNT(*) FROM appointments WHERE user_id = p.id) as appointment_count
+        COALESCE(appts.cnt, 0)::int as appointment_count
       FROM profiles p
       LEFT JOIN user_roles r ON p.id = r.user_id
+      LEFT JOIN (
+        SELECT user_id, COUNT(*) as cnt 
+        FROM appointments 
+        WHERE user_id IS NOT NULL 
+        GROUP BY user_id
+      ) appts ON appts.user_id = p.id
       ORDER BY p.created_at DESC`;
     
     const result = await db.query(query);

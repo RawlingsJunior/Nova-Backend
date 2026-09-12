@@ -20,12 +20,25 @@ function createRateLimitHandler(type, message) {
   };
 }
 
+/**
+ * Key Generator aware of Carrier-Grade NAT (CGNAT) on mobile networks.
+ * Authenticated users are tracked by account ID so users on shared cell towers
+ * or clinic Wi-Fi do not collide. Unauthenticated visitors fall back to IP.
+ */
+const userOrIpKey = (req) => {
+  if (req.user?.id) {
+    return `user:${req.user.id}`;
+  }
+  return req.ip;
+};
+
 // 1. General API Rate Limiter
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1200, // 1200 requests per 15 min per IP
+  max: 2000, // Scaled for 5,000+ active users
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: userOrIpKey,
   skip: (req) => {
     // Skip health checks and static favicon
     return req.path.startsWith('/health') || req.path === '/favicon.ico';

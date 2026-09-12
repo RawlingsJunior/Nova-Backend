@@ -116,6 +116,21 @@ const initializeDatabase = async () => {
       );
     `);
 
+    // Ensure high-performance indexes exist for 5000+ users scale
+    await db.query(`
+      CREATE INDEX IF NOT EXISTS idx_appointments_user_id ON appointments(user_id);
+      CREATE INDEX IF NOT EXISTS idx_appointments_date_status ON appointments(appointment_date, status);
+      CREATE INDEX IF NOT EXISTS idx_appointments_created_at ON appointments(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles(phone);
+      CREATE INDEX IF NOT EXISTS idx_profiles_reg_completed ON profiles(registration_completed);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
+      CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_eye_screenings_patient ON eye_screenings(patient_id, screening_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_sms_logs_status_created ON sms_logs(status, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_reviews_approved ON reviews(approved, created_at DESC);
+    `);
+
     // Ensure default admin account exists with seeded credentials
     const adminClient = await db.pool.connect();
     try {

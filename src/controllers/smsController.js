@@ -55,10 +55,15 @@ const sendBulkSMS = async (req, res) => {
       return res.status(400).json({ message: 'No valid phone numbers found for the selected recipients' });
     }
 
-    // Send SMS asynchronously to avoid blocking the response
-    const sendPromises = phoneNumbers.map(phone => sendSMS(phone, message.trim()));
+    // Send SMS in controlled concurrent chunks of 25 to protect network sockets and provider rate limits at 5000+ scale
+    const CHUNK_SIZE = 25;
+    const results = [];
+    for (let i = 0; i < phoneNumbers.length; i += CHUNK_SIZE) {
+      const chunk = phoneNumbers.slice(i, i + CHUNK_SIZE);
+      const chunkResults = await Promise.all(chunk.map(phone => sendSMS(phone, message.trim())));
+      results.push(...chunkResults);
+    }
     
-    const results = await Promise.all(sendPromises);
     const successCount = results.filter(r => r.success).length;
 
     res.json({ 

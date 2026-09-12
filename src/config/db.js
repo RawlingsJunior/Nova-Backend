@@ -10,7 +10,7 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   connectionTimeoutMillis: 30000, // 30s connection timeout for cold starts
   idleTimeoutMillis: 30000,       // 30s idle timeout
-  max: 15                         // max connection pool size
+  max: 25                         // Scaled connection pool size for 5000+ users
 });
 
 pool.on('connect', () => {
