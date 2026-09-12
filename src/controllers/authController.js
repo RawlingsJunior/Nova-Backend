@@ -448,6 +448,7 @@ const adminResetPassword = async (req, res) => {
     }
 
     // Role protection: Only super_admin can reset super_admin or admin passwords
+    /** @type {any} */
     const targetRoleRes = await db.query('SELECT role FROM user_roles WHERE user_id = $1', [userId]);
     const targetRole = targetRoleRes.rows[0]?.role;
 

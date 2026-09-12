@@ -40,6 +40,7 @@ const getMetrics = async (req, res) => {
     // 2. Query DB version
     let pgVersion = 'PostgreSQL';
     try {
+      /** @type {any} */
       const versionRes = await db.query('SELECT version()');
       if (versionRes.rows.length > 0) {
         pgVersion = versionRes.rows[0].version.split(' ')[0] + ' ' + (versionRes.rows[0].version.split(' ')[1] || '');
@@ -49,6 +50,7 @@ const getMetrics = async (req, res) => {
     }
 
     // 3. Security Metrics: Locked accounts, failed attempts
+    /** @type {any} */
     const lockedRes = await db.query(`
       SELECT COUNT(*)::int as count 
       FROM users 
@@ -56,6 +58,7 @@ const getMetrics = async (req, res) => {
     `);
     const lockedAccountsCount = lockedRes.rows[0]?.count || 0;
 
+    /** @type {any} */
     const failedLogins24hRes = await db.query(`
       SELECT COUNT(*)::int as count 
       FROM audit_logs 
@@ -65,6 +68,7 @@ const getMetrics = async (req, res) => {
     const failedLogins24h = failedLogins24hRes.rows[0]?.count || 0;
 
     // 4. Counts of core entities
+    /** @type {[any, any, any]} */
     const [usersCount, apptsCount, auditLogsCount] = await Promise.all([
       db.query('SELECT COUNT(*)::int as count FROM users'),
       db.query('SELECT COUNT(*)::int as count FROM appointments'),
@@ -228,11 +232,14 @@ const unlockUser = async (req, res) => {
   }
 
   try {
+    /** @type {any} */
     let targetUser;
     if (userId) {
+      /** @type {any} */
       const u = await db.query('SELECT id, email FROM users WHERE id = $1', [userId]);
       targetUser = u.rows[0];
     } else {
+      /** @type {any} */
       const u = await db.query('SELECT id, email FROM users WHERE email = $1', [email]);
       targetUser = u.rows[0];
     }

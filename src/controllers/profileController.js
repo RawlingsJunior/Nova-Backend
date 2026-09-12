@@ -150,6 +150,7 @@ const updateProfileByAdmin = async (req, res) => {
 
     if (role) {
       // Check role assignment authorization
+      /** @type {any} */
       const targetRoleRes = await db.query('SELECT role FROM user_roles WHERE user_id = $1', [req.params.id]);
       const currentTargetRole = targetRoleRes.rows[0]?.role;
 
@@ -198,6 +199,7 @@ const deleteProfileAndUser = async (req, res) => {
     }
 
     // Role protection
+    /** @type {any} */
     const targetRoleRes = await db.query('SELECT role FROM user_roles WHERE user_id = $1', [id]);
     const targetRole = targetRoleRes.rows[0]?.role;
 
@@ -211,6 +213,7 @@ const deleteProfileAndUser = async (req, res) => {
     await db.query('UPDATE cms_content SET updated_by = NULL WHERE updated_by = $1', [id]);
     await db.query('UPDATE eye_screenings SET screened_by = NULL WHERE screened_by = $1', [id]);
 
+    /** @type {any} */
     const result = await db.query('DELETE FROM users WHERE id = $1 RETURNING id, email', [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
