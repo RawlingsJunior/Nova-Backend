@@ -57,6 +57,7 @@ const createScreening = async (req, res) => {
   const screenedBy = req.user.id;
 
   try {
+    /** @type {any} */
     const result = await db.query(
       `INSERT INTO eye_screenings 
       (patient_id, appointment_id, screened_by, va_right_eye, va_left_eye, iop_right, iop_left, 
@@ -66,6 +67,7 @@ const createScreening = async (req, res) => {
        colourVision, contrast, externalExam, diagnosis, followup, isVisible]
     );
 
+    /** @type {any} */
     const screening = result.rows[0];
 
     logAuditEvent({

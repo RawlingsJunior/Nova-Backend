@@ -30,11 +30,13 @@ const createReview = async (req, res) => {
   const userId = req.user ? req.user.id : null;
 
   try {
+    /** @type {any} */
     const result = await db.query(
       'INSERT INTO reviews (user_id, author_name, rating, content) VALUES ($1, $2, $3, $4) RETURNING *',
       [userId, authorName, rating, content]
     );
 
+    /** @type {any} */
     const newReview = result.rows[0];
 
     logAuditEvent({
@@ -123,6 +125,7 @@ const deleteReview = async (req, res) => {
   const { id } = req.params;
 
   try {
+    /** @type {any} */
     const result = await db.query(
       'DELETE FROM reviews WHERE id = $1 RETURNING *',
       [id]
@@ -131,14 +134,17 @@ const deleteReview = async (req, res) => {
       return res.status(404).json({ message: 'Review not found' });
     }
 
+    /** @type {any} */
+    const deletedReview = result.rows[0];
+
     logAuditEvent({
       userId: req.user ? req.user.id : null,
       action: 'REVIEW_DELETED',
-      details: { reviewId: id, author: result.rows[0].author_name },
+      details: { reviewId: id, author: deletedReview.author_name },
       req
     });
 
-    res.json({ message: 'Review deleted successfully', review: result.rows[0] });
+    res.json({ message: 'Review deleted successfully', review: deletedReview });
   } catch (err) {
     console.error('deleteReview error:', err);
     res.status(500).json({ message: 'Server error' });
