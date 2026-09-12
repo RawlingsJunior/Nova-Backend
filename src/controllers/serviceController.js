@@ -36,6 +36,7 @@ const createService = async (req, res) => {
   } = req.body;
 
   try {
+    /** @type {any} */
     const result = await db.query(
       'INSERT INTO services (name, slug, short_description, full_description, price, duration_minutes, image_url, is_active, display_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *',
       [

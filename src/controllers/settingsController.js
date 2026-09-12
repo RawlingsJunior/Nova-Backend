@@ -36,7 +36,9 @@ const getSettings = async (req, res) => {
 // PUT update clinic settings
 const updateSettings = async (req, res) => {
   try {
+    /** @type {any} */
     const existing = await db.query('SELECT id FROM clinic_settings LIMIT 1');
+    /** @type {any} */
     let result;
 
     if (existing.rows.length === 0) {

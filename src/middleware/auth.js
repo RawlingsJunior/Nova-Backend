@@ -47,13 +47,13 @@ const authMiddleware = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-    req.user = decoded;
+    const decoded = /** @type {any} */ (jwt.verify(token, process.env.JWT_SECRET || 'secret'));
+    (/** @type {any} */ (req)).user = decoded;
     
     // Assign permissions to request based on role
     const userRole = (decoded.role || 'patient').toLowerCase();
-    req.user.role = userRole;
-    req.user.permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.patient;
+    (/** @type {any} */ (req)).user.role = userRole;
+    (/** @type {any} */ (req)).user.permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.patient;
 
     next();
   } catch (err) {
@@ -82,14 +82,14 @@ const optionalAuthMiddleware = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
-    req.user = decoded;
+    const decoded = /** @type {any} */ (jwt.verify(token, process.env.JWT_SECRET || 'secret'));
+    (/** @type {any} */ (req)).user = decoded;
     const userRole = (decoded.role || 'patient').toLowerCase();
-    req.user.role = userRole;
-    req.user.permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.patient;
+    (/** @type {any} */ (req)).user.role = userRole;
+    (/** @type {any} */ (req)).user.permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.patient;
   } catch (err) {
     // Proceed as unauthenticated guest
-    req.user = null;
+    (/** @type {any} */ (req)).user = null;
   }
   next();
 };

@@ -17,6 +17,7 @@ const getAllCMS = async (req, res) => {
 const getCMSSection = async (req, res) => {
   const { section } = req.params;
   try {
+    /** @type {any} */
     const result = await db.query(
       'SELECT * FROM cms_content WHERE section_key = $1',
       [section]

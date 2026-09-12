@@ -46,7 +46,7 @@ app.use(compression({
 // 3. Request Correlation ID Middleware
 app.use((req, res, next) => {
   const reqId = req.headers['x-request-id'] || crypto.randomUUID();
-  req.id = reqId;
+  (/** @type {any} */ (req)).id = reqId;
   res.setHeader('X-Request-ID', reqId);
   next();
 });
@@ -108,7 +108,7 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const duration = Date.now() - start;
     logger.info(`${req.method} ${req.originalUrl} | Status: ${res.statusCode} | Duration: ${duration}ms`, {
-      requestId: req.id,
+      requestId: (/** @type {any} */ (req)).id,
       method: req.method,
       url: req.originalUrl,
       status: res.statusCode,
@@ -228,7 +228,7 @@ app.use((req, res) => {
 // 13. Centralized Asynchronous Error Handler
 app.use((err, req, res, next) => {
   logger.error(`Unhandled request error in ${req.method} ${req.originalUrl}`, err, {
-    requestId: req.id,
+    requestId: (/** @type {any} */ (req)).id,
     ip: req.ip
   });
 
@@ -236,7 +236,7 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json({
     error: err.code || 'INTERNAL_ERROR',
     message: err.message || 'An unexpected error occurred. Please try again.',
-    requestId: req.id,
+    requestId: (/** @type {any} */ (req)).id,
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });
 });
