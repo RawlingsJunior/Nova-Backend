@@ -7,7 +7,7 @@ const { sendSMS } = require('../services/smsService');
 const { sendEmail } = require('../services/emailService');
 const { notifyAdmins } = require('../services/adminNotificationService');
 const { logAuditEvent } = require('../lib/auditLogger');
-const { admin: firebaseAdmin, isConfigured: isFirebaseConfigured } = require('../config/firebase');
+const { getAuth, isConfigured: isFirebaseConfigured } = require('../config/firebase');
 
 const register = async (req, res) => {
   const { 
@@ -791,12 +791,15 @@ const googleLogin = async (req, res) => {
     let firebaseVerified = false;
     if (isFirebaseConfigured()) {
       try {
-        const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
-        if (decoded && decoded.email) {
-          email = decoded.email.toLowerCase().trim();
-          fullName = decoded.name || decoded.displayName || 'Nova Patient';
-          firebaseVerified = true;
-          console.log(`[Google Auth - Firebase] Verified token for ${email}`);
+        const auth = getAuth();
+        if (auth) {
+          const decoded = await auth.verifyIdToken(idToken);
+          if (decoded && decoded.email) {
+            email = decoded.email.toLowerCase().trim();
+            fullName = decoded.name || decoded.displayName || 'Nova Patient';
+            firebaseVerified = true;
+            console.log(`[Google Auth - Firebase] Verified token for ${email}`);
+          }
         }
       } catch (fbErr) {
         console.warn('[Google Auth - Firebase] ID token verify error, falling back to Google tokeninfo:', fbErr.message);

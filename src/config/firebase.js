@@ -1,12 +1,18 @@
-const admin = require('firebase-admin');
+const { initializeApp, getApps, cert, applicationDefault } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getMessaging } = require('firebase-admin/messaging');
 require('dotenv').config({ override: true });
 
 let isConfigured = false;
+/** @type {any} */
+let defaultApp = null;
 
 function initFirebase() {
-  if (admin.apps.length > 0) {
+  const existingApps = getApps();
+  if (existingApps.length > 0) {
     isConfigured = true;
-    return admin.apps[0];
+    defaultApp = existingApps[0];
+    return defaultApp;
   }
 
   try {
@@ -21,12 +27,12 @@ function initFirebase() {
         serviceAccount = JSON.parse(decoded);
       }
 
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+      defaultApp = initializeApp({
+        credential: cert(serviceAccount)
       });
       isConfigured = true;
       console.log('[Firebase Admin] Initialized successfully with FIREBASE_SERVICE_ACCOUNT');
-      return admin.app();
+      return defaultApp;
     }
 
     // 2. Check for individual environment variables
@@ -38,8 +44,8 @@ function initFirebase() {
       // Normalize private key newline formatting from .env
       privateKey = privateKey.replace(/\\n/g, '\n');
 
-      admin.initializeApp({
-        credential: admin.credential.cert({
+      defaultApp = initializeApp({
+        credential: cert({
           projectId,
           clientEmail,
           privateKey
@@ -47,17 +53,17 @@ function initFirebase() {
       });
       isConfigured = true;
       console.log('[Firebase Admin] Initialized successfully with project:', projectId);
-      return admin.app();
+      return defaultApp;
     }
 
     // 3. Fallback: Google Application Default Credentials
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      admin.initializeApp({
-        credential: admin.credential.applicationDefault()
+      defaultApp = initializeApp({
+        credential: applicationDefault()
       });
       isConfigured = true;
       console.log('[Firebase Admin] Initialized with GOOGLE_APPLICATION_CREDENTIALS');
-      return admin.app();
+      return defaultApp;
     }
 
     // 4. If credentials not yet supplied, warn gracefully
@@ -72,6 +78,22 @@ function initFirebase() {
 initFirebase();
 
 module.exports = {
-  admin,
+  getApp: () => defaultApp || (getApps().length > 0 ? getApps()[0] : null),
+  getAuth: () => {
+    try {
+      const app = defaultApp || (getApps().length > 0 ? getApps()[0] : null);
+      return app ? getAuth(app) : null;
+    } catch {
+      return null;
+    }
+  },
+  getMessaging: () => {
+    try {
+      const app = defaultApp || (getApps().length > 0 ? getApps()[0] : null);
+      return app ? getMessaging(app) : null;
+    } catch {
+      return null;
+    }
+  },
   isConfigured: () => isConfigured
 };

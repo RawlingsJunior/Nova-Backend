@@ -1,11 +1,11 @@
 const db = require('../config/db');
-const { admin, isConfigured } = require('../config/firebase');
+const { getMessaging, isConfigured } = require('../config/firebase');
 
 /**
  * Send push notification to a specific user across all their registered phone/web devices
  * @param {string} userId - UUID of user
  * @param {object} payload - { title, body, data, icon, url }
- * @returns {Promise<{ successCount: number, failureCount: number }>}
+ * @returns {Promise<{ successCount: number, failureCount: number, error?: string }>}
  */
 async function sendPushToUser(userId, payload = {}) {
   if (!userId) return { successCount: 0, failureCount: 0 };
@@ -18,15 +18,22 @@ async function sendPushToUser(userId, payload = {}) {
       [userId]
     );
 
-    if (res.rows.length === 0) {
+    if (!res.rows || res.rows.length === 0) {
       return { successCount: 0, failureCount: 0 };
     }
 
-    const tokens = res.rows.map(r => r.token);
+    /** @type {string[]} */
+    const tokens = res.rows.map((/** @type {any} */ r) => r.token);
 
     if (!isConfigured()) {
       console.log(`[FCM Push - Dry Run] User ${userId} has ${tokens.length} registered device(s). Notification: "${payload.title}" - ${payload.body}`);
       return { successCount: tokens.length, failureCount: 0 };
+    }
+
+    const messaging = getMessaging();
+    if (!messaging) {
+      console.warn('[FCM Push] Firebase Messaging is not initialized');
+      return { successCount: 0, failureCount: 0 };
     }
 
     // 2. Build Multicast Message
@@ -52,7 +59,7 @@ async function sendPushToUser(userId, payload = {}) {
     };
 
     // 3. Dispatch multicast
-    const response = await admin.messaging().sendEachForMulticast(multicastMessage);
+    const response = await messaging.sendEachForMulticast(multicastMessage);
 
     // 4. Prune invalid or expired tokens
     const deadTokens = [];
@@ -89,25 +96,33 @@ async function sendPushToUser(userId, payload = {}) {
 /**
  * Send push notification to all administrative staff (admin & super_admin)
  * @param {object} payload - { title, body, data, icon, url }
+ * @returns {Promise<{ successCount: number, failureCount: number }>}
  */
 async function sendPushToAdmins(payload = {}) {
   try {
-    /** @type {any} */
     const adminQuery = `
       SELECT DISTINCT t.token, t.id
       FROM user_device_tokens t
       JOIN user_roles r ON t.user_id = r.user_id
       WHERE r.role IN ('admin', 'super_admin')
     `;
+    /** @type {any} */
     const res = await db.query(adminQuery);
 
-    if (res.rows.length === 0) return { successCount: 0, failureCount: 0 };
+    if (!res.rows || res.rows.length === 0) return { successCount: 0, failureCount: 0 };
 
-    const tokens = res.rows.map(r => r.token);
+    /** @type {string[]} */
+    const tokens = res.rows.map((/** @type {any} */ r) => r.token);
 
     if (!isConfigured()) {
       console.log(`[FCM Admin Push - Dry Run] Sent to ${tokens.length} admin device(s): "${payload.title}" - ${payload.body}`);
       return { successCount: tokens.length, failureCount: 0 };
+    }
+
+    const messaging = getMessaging();
+    if (!messaging) {
+      console.warn('[FCM Admin Push] Firebase Messaging is not initialized');
+      return { successCount: 0, failureCount: 0 };
     }
 
     const multicastMessage = {
@@ -130,7 +145,7 @@ async function sendPushToAdmins(payload = {}) {
       }
     };
 
-    const response = await admin.messaging().sendEachForMulticast(multicastMessage);
+    const response = await messaging.sendEachForMulticast(multicastMessage);
     return {
       successCount: response.successCount,
       failureCount: response.failureCount
@@ -142,20 +157,28 @@ async function sendPushToAdmins(payload = {}) {
 }
 
 /**
- * Send broadcast push notification to all registered user devices
+ * Broadcast push notification to all active patient and staff devices
  * @param {object} payload - { title, body, data, icon, url }
+ * @returns {Promise<{ successCount: number, failureCount: number }>}
  */
 async function sendBroadcastPush(payload = {}) {
   try {
     /** @type {any} */
     const res = await db.query('SELECT DISTINCT token FROM user_device_tokens');
-    if (res.rows.length === 0) return { successCount: 0, failureCount: 0 };
+    if (!res.rows || res.rows.length === 0) return { successCount: 0, failureCount: 0 };
 
-    const allTokens = res.rows.map(r => r.token);
+    /** @type {string[]} */
+    const allTokens = res.rows.map((/** @type {any} */ r) => r.token);
 
     if (!isConfigured()) {
       console.log(`[FCM Broadcast - Dry Run] Sent broadcast to ${allTokens.length} device(s): "${payload.title}"`);
       return { successCount: allTokens.length, failureCount: 0 };
+    }
+
+    const messaging = getMessaging();
+    if (!messaging) {
+      console.warn('[FCM Broadcast] Firebase Messaging is not initialized');
+      return { successCount: 0, failureCount: 0 };
     }
 
     // Process in batches of 500 (FCM limit)
@@ -185,7 +208,7 @@ async function sendBroadcastPush(payload = {}) {
         }
       };
 
-      const response = await admin.messaging().sendEachForMulticast(multicastMessage);
+      const response = await messaging.sendEachForMulticast(multicastMessage);
       totalSuccess += response.successCount;
       totalFailure += response.failureCount;
     }
