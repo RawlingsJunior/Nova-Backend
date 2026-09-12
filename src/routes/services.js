@@ -9,11 +9,12 @@ const {
   reorderServices 
 } = require('../controllers/serviceController.js');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth.js');
+const { cacheMiddleware } = require('../lib/cache.js');
 
-// Public routes
-router.get('/', getServices);
+// Public route with HTTP & in-memory caching (10 min TTL + ETag)
+router.get('/', cacheMiddleware({ ttl: 600, prefix: 'services' }), getServices);
 
-// Admin routes
+// Admin routes (Never cached)
 router.get('/all', authMiddleware, adminMiddleware, getAllServices);
 router.post('/', authMiddleware, adminMiddleware, createService);
 router.put('/:id', authMiddleware, adminMiddleware, updateService);

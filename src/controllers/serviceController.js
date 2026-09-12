@@ -1,12 +1,14 @@
 const db = require('../config/db');
+const { cache } = require('../lib/cache');
+const logger = require('../lib/logger');
 
 const getServices = async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM services WHERE is_active = TRUE ORDER BY display_order ASC, name ASC');
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    logger.error('Error fetching active services', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Could not load services' });
   }
 };
 
@@ -15,8 +17,8 @@ const getAllServices = async (req, res) => {
     const result = await db.query('SELECT * FROM services ORDER BY display_order ASC, name ASC');
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    logger.error('Error fetching all services', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Could not load services' });
   }
 };
 
@@ -48,10 +50,15 @@ const createService = async (req, res) => {
         displayOrder ?? 0
       ]
     );
+
+    // Invalidate cached services
+    cache.delPrefix('services:');
+    logger.audit('CREATE_SERVICE', { adminId: req.user?.id, serviceId: result.rows[0].id, name });
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    logger.error('Failed to create service', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Failed to create service' });
   }
 };
 
@@ -89,11 +96,15 @@ const updateService = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Service not found' });
     }
+
+    // Invalidate cached services
+    cache.delPrefix('services:');
+    logger.audit('UPDATE_SERVICE', { adminId: req.user?.id, serviceId: id, name });
     
     res.json(result.rows[0]);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    logger.error('Failed to update service', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Failed to update service' });
   }
 };
 
@@ -104,10 +115,15 @@ const deleteService = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Service not found' });
     }
+
+    // Invalidate cached services
+    cache.delPrefix('services:');
+    logger.audit('DELETE_SERVICE', { adminId: req.user?.id, serviceId: id });
+
     res.json({ message: 'Service deleted successfully' });
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Server error');
+    logger.error('Failed to delete service', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Failed to delete service' });
   }
 };
 
@@ -119,17 +135,21 @@ const reorderServices = async (req, res) => {
       await db.query('UPDATE services SET display_order = $1 WHERE id = $2', [service.displayOrder, service.id]);
     }
     await db.query('COMMIT');
+
+    cache.delPrefix('services:');
+    logger.audit('REORDER_SERVICES', { adminId: req.user?.id, count: services?.length });
+
     res.json({ message: 'Services reordered successfully' });
   } catch (err) {
     await db.query('ROLLBACK');
-    console.error(err);
-    res.status(500).send('Server error');
+    logger.error('Failed to reorder services', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Failed to reorder services' });
   }
 };
 
 module.exports = { 
   getServices, 
-  getAllServices,
+  getAllServices, 
   createService, 
   updateService, 
   deleteService, 

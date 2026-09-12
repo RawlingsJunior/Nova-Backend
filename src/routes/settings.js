@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { getSettings, updateSettings } = require('../controllers/settingsController.js');
+const { getSettings, updateSettings } = require('../controllers/settingsController');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { cacheMiddleware } = require('../lib/cache');
 
-// Public: get clinic settings
-router.get('/', getSettings);
+// Public settings route (Cached 5 mins)
+router.get('/', cacheMiddleware({ ttl: 300, prefix: 'settings' }), getSettings);
 
-// Admin: update settings
+// Admin update settings
 router.put('/', authMiddleware, adminMiddleware, updateSettings);
 
 module.exports = router;

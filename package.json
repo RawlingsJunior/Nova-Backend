@@ -16,6 +16,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "axios": "^1.16.1",
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

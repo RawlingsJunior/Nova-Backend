@@ -1,4 +1,6 @@
 const db = require('../config/db');
+const { cache } = require('../lib/cache');
+const logger = require('../lib/logger');
 
 // GET all CMS content
 const getAllCMS = async (req, res) => {
@@ -6,8 +8,8 @@ const getAllCMS = async (req, res) => {
     const result = await db.query('SELECT * FROM cms_content ORDER BY section_key');
     res.json(result.rows);
   } catch (err) {
-    console.error('getAllCMS error:', err);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getAllCMS error', err);
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Could not load CMS content' });
   }
 };
 
@@ -15,20 +17,17 @@ const getAllCMS = async (req, res) => {
 const getCMSSection = async (req, res) => {
   const { section } = req.params;
   try {
-    /** @type {any} */
     const result = await db.query(
       'SELECT * FROM cms_content WHERE section_key = $1',
       [section]
     );
     if (result.rows.length === 0) {
-      // Return empty content rather than 404 — the frontend handles defaults
       return res.json({ section_key: section, content_json: {} });
     }
-    // Return the content_json directly so frontend gets the data it expects
     res.json(result.rows[0].content_json || {});
   } catch (err) {
-    console.error('getCMSSection error:', err);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('getCMSSection error', err, { section });
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Could not load section' });
   }
 };
 
@@ -46,10 +45,15 @@ const updateCMSSection = async (req, res) => {
        RETURNING *`,
       [section, contentJson]
     );
+
+    // Purge cached CMS sections
+    cache.delPrefix('cms:');
+    logger.audit('UPDATE_CMS_SECTION', { adminId: req.user?.id, section });
+
     res.json(result.rows[0]);
   } catch (err) {
-    console.error('updateCMSSection error:', err);
-    res.status(500).json({ message: 'Server error' });
+    logger.error('updateCMSSection error', err, { section });
+    res.status(500).json({ error: 'SERVER_ERROR', message: 'Could not save CMS content' });
   }
 };
 

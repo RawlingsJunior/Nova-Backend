@@ -1,53 +1,91 @@
 const { rateLimit } = require('express-rate-limit');
+const logger = require('../lib/logger');
 
-// Default API Rate Limiter (for general app navigation, queries, profiles, settings, etc.)
+function createRateLimitHandler(type, message) {
+  return (req, res, next, options) => {
+    const retryAfter = Math.ceil(options.windowMs / 1000);
+    res.setHeader('Retry-After', retryAfter);
+    
+    logger.warn(`Rate limit triggered [${type}] from IP: ${req.ip}`, {
+      ip: req.ip,
+      path: req.originalUrl,
+      type
+    });
+
+    res.status(429).json({
+      error: 'RATE_LIMIT_EXCEEDED',
+      message,
+      retryAfterSeconds: retryAfter
+    });
+  };
+}
+
+// 1. General API Rate Limiter
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each IP to 1000 requests per 15 minutes
-  message: {
-    message: 'Too many requests from this IP, please try again after 15 minutes.'
+  max: 1200, // 1200 requests per 15 min per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip health checks and static favicon
+    return req.path.startsWith('/health') || req.path === '/favicon.ico';
   },
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  handler: createRateLimitHandler('API_GENERAL', 'Too many requests. Please slow down and try again shortly.')
 });
 
-// Rate Limiter for Authentication & Security endpoints (login, register, reset, update password)
+// 2. Authentication Rate Limiter (Brute-force protection)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 60, // Limit each IP to 60 login/register attempts per 15 minutes
-  message: {
-    message: 'Too many authentication attempts from this IP. Please try again after 15 minutes to protect your account security.'
-  },
+  max: 20, // 20 attempts per 15 minutes
   standardHeaders: true,
   legacyHeaders: false,
+  handler: createRateLimitHandler(
+    'AUTH_BRUTE_FORCE',
+    'Too many login or authentication attempts. For your security, this action is temporarily paused. Please try again in 15 minutes.'
+  )
 });
 
-// Rate Limiter for Public Appointment Bookings (prevents spamming or DDoS on booking database)
+// 3. SMS Rate Limiter (Abuse & budget protection)
+const smsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 45, // Max 45 SMS dispatch requests per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: createRateLimitHandler(
+    'SMS_THROTTLE',
+    'SMS dispatch rate limit reached. Please wait before broadcasting or sending more SMS.'
+  )
+});
+
+// 4. Public Appointment Booking Limiter (Spam reservation protection)
 const bookingLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 60, // Limit each IP to 60 appointment actions per 15 minutes
-  skip: (req) => !!req.headers.authorization, // Do not rate-limit authenticated staff/admins
-  message: {
-    message: 'Too many appointment booking requests. Please check your dashboard or try again in a few minutes.'
-  },
+  max: 30, // 30 bookings per 15 min per IP
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => !!req.headers.authorization, // Skip verified logged-in administrators
+  handler: createRateLimitHandler(
+    'BOOKING_SPAM',
+    'Too many booking requests from this network. Please review your existing bookings or try again in a few minutes.'
+  )
 });
 
-// Chatbot Rate Limiter (prevents scraping or excessive AI model token usage costs)
+// 5. Chatbot Rate Limiter (Token consumption protection)
 const chatbotLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 60, // Limit each IP to 60 chatbot queries per 15 minutes
-  message: {
-    message: 'You have reached the chatbot query rate limit. Please try again in 15 minutes.'
-  },
+  max: 50, // 50 messages per 15 min
   standardHeaders: true,
   legacyHeaders: false,
+  handler: createRateLimitHandler(
+    'CHATBOT_RATE_LIMIT',
+    'You have reached the chat query limit. Please wait a few moments or call our clinic directly at +233 54 417 2089.'
+  )
 });
 
 module.exports = {
   apiLimiter,
   authLimiter,
+  smsLimiter,
   bookingLimiter,
   chatbotLimiter
 };
