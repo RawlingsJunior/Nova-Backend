@@ -15,14 +15,24 @@ const logger = require('./logger');
 const logAuditEvent = async ({ userId, action = 'SYSTEM_EVENT', details = {}, ip, req } = {}) => {
   try {
     let clientIp = ip;
-    if (!clientIp && req) {
-      const forwarded = req.headers ? req.headers['x-forwarded-for'] : undefined;
-      const rawXForwarded = Array.isArray(forwarded) ? forwarded[0] : (typeof forwarded === 'string' ? forwarded : undefined);
-      clientIp = (req.headers && req.headers['cf-connecting-ip']) || (rawXForwarded ? rawXForwarded.split(',')[0].trim() : undefined) || req.ip;
+    let userAgent;
+    if (req) {
+      if (!clientIp) {
+        const forwarded = req.headers ? req.headers['x-forwarded-for'] : undefined;
+        const rawXForwarded = Array.isArray(forwarded) ? forwarded[0] : (typeof forwarded === 'string' ? forwarded : undefined);
+        clientIp = (req.headers && req.headers['cf-connecting-ip']) || (rawXForwarded ? rawXForwarded.split(',')[0].trim() : undefined) || req.ip;
+      }
+      userAgent = req.headers ? req.headers['user-agent'] : undefined;
     }
     const finalIp = clientIp || 'unknown';
     const uId = userId || (req && req.user ? req.user.id : null);
-    const detailsJson = typeof details === 'object' ? JSON.stringify(details) : JSON.stringify({ message: String(details) });
+    
+    const detailsObj = typeof details === 'object' && details !== null ? { ...details } : { message: String(details) };
+    if (userAgent && !detailsObj.userAgent) {
+      // Shorten userAgent to avoid excessive string length
+      detailsObj.userAgent = userAgent.substring(0, 150);
+    }
+    const detailsJson = JSON.stringify(detailsObj);
 
     await db.query(
       `INSERT INTO audit_logs (user_id, action, details, ip) VALUES ($1, $2, $3, $4)`,

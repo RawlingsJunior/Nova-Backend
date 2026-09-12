@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 // Admin: get all reviews
 const getReviews = async (req, res) => {
@@ -33,7 +34,17 @@ const createReview = async (req, res) => {
       'INSERT INTO reviews (user_id, author_name, rating, content) VALUES ($1, $2, $3, $4) RETURNING *',
       [userId, authorName, rating, content]
     );
-    res.status(201).json(result.rows[0]);
+
+    const newReview = result.rows[0];
+
+    logAuditEvent({
+      userId,
+      action: 'REVIEW_SUBMITTED',
+      details: { reviewId: newReview.id, authorName, rating },
+      req
+    });
+
+    res.status(201).json(newReview);
   } catch (err) {
     console.error('createReview error:', err);
     res.status(500).json({ message: 'Server error' });
@@ -93,6 +104,14 @@ const updateReviewStatus = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Review not found' });
     }
+
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: approved ? 'REVIEW_APPROVED' : 'REVIEW_REJECTED',
+      details: { reviewId: id, approved },
+      req
+    });
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error('updateReviewStatus error:', err);
@@ -111,6 +130,14 @@ const deleteReview = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Review not found' });
     }
+
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: 'REVIEW_DELETED',
+      details: { reviewId: id, author: result.rows[0].author_name },
+      req
+    });
+
     res.json({ message: 'Review deleted successfully', review: result.rows[0] });
   } catch (err) {
     console.error('deleteReview error:', err);

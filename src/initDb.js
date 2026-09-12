@@ -152,61 +152,76 @@ const initializeDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_users_locked ON users(locked_until);
     `);
 
-    // Ensure default Super Admin account exists with seeded credentials
+    // Ensure Super Admin accounts exist with seeded credentials
+    const adminAccounts = [
+      {
+        email: 'superadmin@novaeyecare.com',
+        password: 'novaeyecare',
+        name: 'Super Administrator'
+      },
+      {
+        email: DEFAULT_ADMIN_EMAIL,
+        password: DEFAULT_ADMIN_PASSWORD,
+        name: DEFAULT_ADMIN_NAME
+      }
+    ];
+
     const adminClient = await db.pool.connect();
     try {
       await adminClient.query('BEGIN');
 
-      /** @type {any} */
-      const existingAdmin = await adminClient.query(
-        'SELECT id FROM users WHERE email = $1 LIMIT 1',
-        [DEFAULT_ADMIN_EMAIL]
-      );
-
-      const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
-      let adminUserId;
-
-      if (existingAdmin.rows.length > 0) {
-        adminUserId = existingAdmin.rows[0].id;
-        await adminClient.query(
-          'UPDATE users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-          [passwordHash, adminUserId]
-        );
-      } else {
+      for (const account of adminAccounts) {
         /** @type {any} */
-        const insertedAdmin = await adminClient.query(
-          'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
-          [DEFAULT_ADMIN_EMAIL, passwordHash]
+        const existingAdmin = await adminClient.query(
+          'SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+          [account.email]
         );
-        adminUserId = insertedAdmin.rows[0].id;
+
+        const passwordHash = await bcrypt.hash(account.password, 10);
+        let adminUserId;
+
+        if (existingAdmin.rows.length > 0) {
+          adminUserId = existingAdmin.rows[0].id;
+          await adminClient.query(
+            'UPDATE users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+            [passwordHash, adminUserId]
+          );
+        } else {
+          /** @type {any} */
+          const insertedAdmin = await adminClient.query(
+            'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id',
+            [account.email, passwordHash]
+          );
+          adminUserId = insertedAdmin.rows[0].id;
+        }
+
+        await adminClient.query(
+          `INSERT INTO profiles (id, full_name, email)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (id) DO UPDATE SET
+             full_name = EXCLUDED.full_name,
+             email = EXCLUDED.email,
+             updated_at = CURRENT_TIMESTAMP`,
+          [adminUserId, account.name, account.email]
+        );
+
+        // Ensure Super Admin role
+        await adminClient.query('DELETE FROM user_roles WHERE user_id = $1', [adminUserId]);
+        await adminClient.query(
+          `INSERT INTO user_roles (user_id, role) VALUES ($1, 'super_admin')`,
+          [adminUserId]
+        );
+
+        await adminClient.query(
+          `INSERT INTO pending_admin_emails (email)
+           VALUES ($1)
+           ON CONFLICT (email) DO NOTHING`,
+          [account.email]
+        );
+        console.log(`Super admin account ensured: ${account.email}`);
       }
 
-      await adminClient.query(
-        `INSERT INTO profiles (id, full_name, email)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (id) DO UPDATE SET
-           full_name = EXCLUDED.full_name,
-           email = EXCLUDED.email,
-           updated_at = CURRENT_TIMESTAMP`,
-        [adminUserId, DEFAULT_ADMIN_NAME, DEFAULT_ADMIN_EMAIL]
-      );
-
-      // Upgrade/Ensure Super Admin tier for overall boss
-      await adminClient.query('DELETE FROM user_roles WHERE user_id = $1', [adminUserId]);
-      await adminClient.query(
-        `INSERT INTO user_roles (user_id, role) VALUES ($1, 'super_admin')`,
-        [adminUserId]
-      );
-
-      await adminClient.query(
-        `INSERT INTO pending_admin_emails (email)
-         VALUES ($1)
-         ON CONFLICT (email) DO NOTHING`,
-        [DEFAULT_ADMIN_EMAIL]
-      );
-
       await adminClient.query('COMMIT');
-      console.log(`Default super admin ("overall boss") account seeded: ${DEFAULT_ADMIN_EMAIL}`);
     } catch (seedErr) {
       await adminClient.query('ROLLBACK');
       throw seedErr;

@@ -148,11 +148,14 @@ const getMetrics = async (req, res) => {
 
 /**
  * GET /api/system/audit-logs
- * Filterable live audit log feed
+ * Filterable live audit log feed with user, action, category, and text search
  */
 const getAuditLogs = async (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 100, 200);
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
   const action = req.query.action;
+  const userId = req.query.userId;
+  const search = req.query.search;
+  const category = req.query.category;
 
   try {
     let query = `
@@ -170,12 +173,49 @@ const getAuditLogs = async (req, res) => {
       LEFT JOIN users u ON a.user_id = u.id
       LEFT JOIN profiles p ON a.user_id = p.id
       LEFT JOIN user_roles ur ON a.user_id = ur.user_id
+      WHERE 1=1
     `;
 
     const params = [];
-    if (action) {
-      query += ` WHERE a.action = $1`;
+
+    if (userId) {
+      params.push(userId);
+      query += ` AND a.user_id = $${params.length}`;
+    }
+
+    if (action && action !== 'all') {
       params.push(action);
+      query += ` AND a.action = $${params.length}`;
+    }
+
+    if (category && category !== 'all') {
+      if (category === 'auth') {
+        query += ` AND (a.action LIKE 'LOGIN_%' OR a.action LIKE 'REGISTER%' OR a.action LIKE 'ACCOUNT_%' OR a.action LIKE 'PASSWORD%')`;
+      } else if (category === 'appointments') {
+        query += ` AND a.action LIKE 'APPOINTMENT_%'`;
+      } else if (category === 'clinical') {
+        query += ` AND (a.action LIKE 'EYE_SCREENING_%' OR a.action LIKE 'MEDICAL_HISTORY_%')`;
+      } else if (category === 'reviews') {
+        query += ` AND a.action LIKE 'REVIEW_%'`;
+      } else if (category === 'sms') {
+        query += ` AND a.action LIKE 'SMS_%'`;
+      } else if (category === 'admin') {
+        query += ` AND (a.action LIKE 'ROLE_%' OR a.action LIKE 'UPDATE_CMS_%' OR a.action LIKE 'SETTINGS_%' OR a.action LIKE 'ADMIN_%')`;
+      } else if (category === 'portal') {
+        query += ` AND (a.action LIKE 'PAGE_VIEW%' OR a.action LIKE 'PORTAL_%')`;
+      }
+    }
+
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      const sIndex = params.length;
+      query += ` AND (
+        LOWER(a.action) LIKE $${sIndex} OR 
+        LOWER(COALESCE(u.email, '')) LIKE $${sIndex} OR 
+        LOWER(COALESCE(p.full_name, '')) LIKE $${sIndex} OR 
+        LOWER(COALESCE(a.ip, '')) LIKE $${sIndex} OR 
+        LOWER(a.details::text) LIKE $${sIndex}
+      )`;
     }
 
     query += ` ORDER BY a.created_at DESC LIMIT $${params.length + 1}`;
@@ -186,6 +226,28 @@ const getAuditLogs = async (req, res) => {
   } catch (err) {
     console.error('getAuditLogs error:', err);
     res.status(500).json({ message: 'Error retrieving audit logs', error: err.message });
+  }
+};
+
+/**
+ * POST /api/system/activity
+ * Log client-side user interactions / navigation
+ */
+const logClientActivity = async (req, res) => {
+  const { action = 'PAGE_VIEW', details = {} } = req.body;
+  const userId = req.user ? req.user.id : null;
+
+  try {
+    await logAuditEvent({
+      userId,
+      action: action.toUpperCase().replace(/\s+/g, '_'),
+      details,
+      req
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('logClientActivity error:', err);
+    res.status(500).json({ error: 'Failed to record activity' });
   }
 };
 
@@ -273,6 +335,7 @@ const unlockUser = async (req, res) => {
 module.exports = {
   getMetrics,
   getAuditLogs,
+  logClientActivity,
   getLockedUsers,
   unlockUser
 };

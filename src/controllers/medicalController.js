@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 const getScreenings = async (req, res) => {
   try {
@@ -65,7 +66,23 @@ const createScreening = async (req, res) => {
        colourVision, contrast, externalExam, diagnosis, followup, isVisible]
     );
 
-    res.status(201).json(result.rows[0]);
+    const screening = result.rows[0];
+
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: 'EYE_SCREENING_RECORDED',
+      details: {
+        screeningId: screening.id,
+        patientId,
+        diagnosis,
+        vaRight,
+        vaLeft,
+        screenedBy
+      },
+      req
+    });
+
+    res.status(201).json(screening);
   } catch (err) {
     console.error(err);
     res.status(500).send('Server error');
@@ -114,6 +131,18 @@ const updateMedicalHistory = async (req, res) => {
        RETURNING *`,
       [patientId, ocularHistory, systemicConditions, currentMedications, familyEyeHistory, allergies]
     );
+
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: 'MEDICAL_HISTORY_UPDATED',
+      details: {
+        patientId,
+        hasAllergies: !!allergies,
+        hasMedications: !!currentMedications
+      },
+      req
+    });
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -143,6 +172,17 @@ const updateScreening = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Screening record not found' });
     }
+
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: 'EYE_SCREENING_UPDATED',
+      details: {
+        screeningId: id,
+        patientId,
+        diagnosis
+      },
+      req
+    });
 
     res.json(result.rows[0]);
   } catch (err) {

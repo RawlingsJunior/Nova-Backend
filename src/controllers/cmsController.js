@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { cache } = require('../lib/cache');
 const logger = require('../lib/logger');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 // GET all CMS content
 const getAllCMS = async (req, res) => {
@@ -50,6 +51,13 @@ const updateCMSSection = async (req, res) => {
     // Purge cached CMS sections
     cache.delPrefix('cms:');
     logger.audit('UPDATE_CMS_SECTION', { adminId: req.user?.id, section });
+
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: 'UPDATE_CMS_CONTENT',
+      details: { section },
+      req
+    });
 
     res.json(result.rows[0]);
   } catch (err) {

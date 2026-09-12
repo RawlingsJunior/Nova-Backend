@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { sendSMS } = require('../services/smsService');
 const { sendEmail } = require('../services/emailService');
 const { notifyAdmins } = require('../services/adminNotificationService');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 const getAppointments = async (req, res) => {
   try {
@@ -187,6 +188,22 @@ const createAppointment = async (req, res) => {
       `${fullName} has booked an appointment for ${service} on ${appointmentDate} at ${appointmentTime}.`,
       'booking'
     );
+
+    logAuditEvent({
+      userId: userId || null,
+      action: 'APPOINTMENT_BOOKED',
+      details: {
+        appointmentId: appointment.id,
+        patientName: fullName,
+        service,
+        date: appointmentDate,
+        time: appointmentTime,
+        type: appointmentType || 'in_person',
+        phone,
+        email
+      },
+      req
+    });
 
     res.status(201).json(appointment);
   } catch (err) {
@@ -460,6 +477,18 @@ const updateAppointmentStatus = async (req, res) => {
       console.error('Status notification failed:', notifyErr);
     }
 
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: status === 'cancelled' ? 'APPOINTMENT_CANCELLED' : 'APPOINTMENT_STATUS_UPDATED',
+      details: {
+        appointmentId: id,
+        patientId: appointment.user_id,
+        patientName: appointment.full_name,
+        newStatus: status
+      },
+      req
+    });
+
     res.json(appointment);
   } catch (err) {
     console.error(err);
@@ -471,7 +500,7 @@ const deleteAppointment = async (req, res) => {
   const { id } = req.params;
   try {
     // Security: Check ownership
-    const checkQuery = 'SELECT user_id FROM appointments WHERE id = $1';
+    const checkQuery = 'SELECT user_id, full_name, service FROM appointments WHERE id = $1';
     /** @type {any} */
     const checkResult = await db.query(checkQuery, [id]);
     
@@ -482,6 +511,18 @@ const deleteAppointment = async (req, res) => {
     }
 
     await db.query('DELETE FROM appointments WHERE id = $1', [id]);
+
+    logAuditEvent({
+      userId: req.user ? req.user.id : null,
+      action: 'APPOINTMENT_DELETED',
+      details: { 
+        appointmentId: id,
+        patientName: checkResult.rows[0].full_name,
+        service: checkResult.rows[0].service
+      },
+      req
+    });
+
     res.json({ message: 'Appointment deleted successfully' });
   } catch (err) {
     console.error(err);
