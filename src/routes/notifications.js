@@ -6,7 +6,10 @@ const {
   markAsRead,
   markAllAsRead,
   deleteNotification,
-  clearNotifications
+  clearNotifications,
+  registerDeviceToken,
+  unregisterDeviceToken,
+  sendTestPush
 } = require('../controllers/notificationController.js');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth.js');
 
@@ -15,6 +18,11 @@ router.get('/', authMiddleware, getNotifications);
 router.patch('/read-all', authMiddleware, markAllAsRead);
 router.patch('/:id/read', authMiddleware, markAsRead);
 router.delete('/:id', authMiddleware, deleteNotification);
+
+// FCM Device Push Token routes
+router.post('/device-token', authMiddleware, registerDeviceToken);
+router.delete('/device-token', authMiddleware, unregisterDeviceToken);
+router.post('/test-push', authMiddleware, sendTestPush);
 
 // Admin routes
 router.get('/admin', authMiddleware, adminMiddleware, getAllNotifications);

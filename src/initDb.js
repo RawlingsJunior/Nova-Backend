@@ -134,6 +134,21 @@ const initializeDatabase = async () => {
       );
     `);
 
+    // Ensure user_device_tokens table exists for FCM push notifications
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS user_device_tokens (
+        id SERIAL PRIMARY KEY,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token TEXT NOT NULL,
+        platform VARCHAR(20) DEFAULT 'web',
+        user_agent TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, token)
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_device_tokens_user ON user_device_tokens(user_id);
+    `);
+
     // Ensure high-performance indexes exist for 5000+ users scale
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_appointments_user_id ON appointments(user_id);

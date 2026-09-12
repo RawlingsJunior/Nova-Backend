@@ -3,6 +3,7 @@ const { sendSMS } = require('../services/smsService');
 const { sendEmail } = require('../services/emailService');
 const { notifyAdmins } = require('../services/adminNotificationService');
 const { logAuditEvent } = require('../lib/auditLogger');
+const { sendPushToUser } = require('../services/fcmService');
 
 const getAppointments = async (req, res) => {
   try {
@@ -180,6 +181,16 @@ const createAppointment = async (req, res) => {
       }
     } catch (notifyErr) {
       console.error('Notification failed:', notifyErr);
+    }
+
+    // Send FCM Push Notification to user if logged in
+    if (userId) {
+      sendPushToUser(userId, {
+        title: 'Appointment Booked',
+        body: `Your appointment for ${service} on ${appointmentDate} at ${appointmentTime} has been received.`,
+        url: '/dashboard',
+        data: { appointmentId: String(appointment.id), type: 'booking' }
+      }).catch(pushErr => console.error('[Booking Alert] Push error:', pushErr.message));
     }
 
     // Admin Notification for new booking
@@ -363,6 +374,16 @@ const updateAppointment = async (req, res) => {
             console.error('[Status Alert] Email send error:', emailErr.message);
           }
         }
+
+        // 4. Send FCM Push Alert (if user_id exists)
+        if (updatedAppointment.user_id) {
+          sendPushToUser(updatedAppointment.user_id, {
+            title: statusColors.title || 'Appointment Update',
+            body: statusMessage,
+            url: '/dashboard',
+            data: { appointmentId: String(updatedAppointment.id), status: String(updatedAppointment.status) }
+          }).catch(pushErr => console.error('[Status Alert] Push send error:', pushErr.message));
+        }
       }
     } catch (notifyErr) {
       console.error('Status/Reschedule notification failed:', notifyErr);
@@ -421,10 +442,11 @@ const updateAppointmentStatus = async (req, res) => {
             ? { gradient: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', title: 'Appointment Cancelled' }
             : { gradient: 'linear-gradient(135deg, #475569 0%, #334155 100%)', title: 'Appointment Update' };
 
-        if (appointment.email) await sendEmail({
-          to: appointment.email,
-          subject: `Appointment Status Update: ${status.toUpperCase()}`,
-          html: `
+        if (appointment.email) {
+          await sendEmail({
+            to: appointment.email,
+            subject: `Appointment Status Update: ${status.toUpperCase()}`,
+            html: `
             <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; max-width: 600px; margin: 20px auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; background-color: #ffffff; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);">
               <div style="background: ${statusColors.gradient}; padding: 36px 30px; text-align: center; color: #ffffff;">
                 <h1 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">${statusColors.title}</h1>
@@ -471,7 +493,18 @@ const updateAppointmentStatus = async (req, res) => {
               </div>
             </div>
           `
-        });
+          });
+        }
+
+        // 4. Send FCM Push Alert (if user_id exists)
+        if (appointment.user_id) {
+          sendPushToUser(appointment.user_id, {
+            title: statusColors.title || 'Appointment Update',
+            body: statusMessage,
+            url: '/dashboard',
+            data: { appointmentId: String(appointment.id), status: String(status) }
+          }).catch(pushErr => console.error('[Status Alert] Push send error:', pushErr.message));
+        }
       }
     } catch (notifyErr) {
       console.error('Status notification failed:', notifyErr);

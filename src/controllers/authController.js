@@ -7,6 +7,7 @@ const { sendSMS } = require('../services/smsService');
 const { sendEmail } = require('../services/emailService');
 const { notifyAdmins } = require('../services/adminNotificationService');
 const { logAuditEvent } = require('../lib/auditLogger');
+const { admin: firebaseAdmin, isConfigured: isFirebaseConfigured } = require('../config/firebase');
 
 const register = async (req, res) => {
   const { 
@@ -783,23 +784,48 @@ const googleLogin = async (req, res) => {
   }
 
   try {
-    // Verify ID token with Google API
-    const googleVerifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`;
-    const verifyResponse = await axios.get(googleVerifyUrl);
-    const payload = verifyResponse.data;
+    let email;
+    let fullName;
 
-    // Verify token came from the correct Google Client ID (optional but recommended in production)
-    const expectedClientId = process.env.GOOGLE_CLIENT_ID;
-    if (expectedClientId && expectedClientId !== 'your_google_client_id_here' && payload.aud !== expectedClientId) {
-      console.warn(`[Google Auth] Audience mismatch: expected ${expectedClientId}, got ${payload.aud}`);
+    // 1. Attempt verification via Firebase Admin SDK
+    let firebaseVerified = false;
+    if (isFirebaseConfigured()) {
+      try {
+        const decoded = await firebaseAdmin.auth().verifyIdToken(idToken);
+        if (decoded && decoded.email) {
+          email = decoded.email.toLowerCase().trim();
+          fullName = decoded.name || decoded.displayName || 'Nova Patient';
+          firebaseVerified = true;
+          console.log(`[Google Auth - Firebase] Verified token for ${email}`);
+        }
+      } catch (fbErr) {
+        console.warn('[Google Auth - Firebase] ID token verify error, falling back to Google tokeninfo:', fbErr.message);
+      }
     }
 
-    if (!payload.email) {
-      return res.status(400).json({ message: 'Invalid token payload: Email missing' });
-    }
+    // 2. Fallback to Google OAuth tokeninfo endpoint
+    if (!firebaseVerified) {
+      try {
+        const googleVerifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`;
+        const verifyResponse = await axios.get(googleVerifyUrl);
+        const payload = verifyResponse.data;
 
-    const email = payload.email.toLowerCase().trim();
-    const fullName = payload.name || 'Nova Patient';
+        const expectedClientId = process.env.GOOGLE_CLIENT_ID;
+        if (expectedClientId && expectedClientId !== 'your_google_client_id_here' && payload.aud !== expectedClientId) {
+          console.warn(`[Google Auth] Audience mismatch: expected ${expectedClientId}, got ${payload.aud}`);
+        }
+
+        if (!payload.email) {
+          return res.status(400).json({ message: 'Invalid token payload: Email missing' });
+        }
+
+        email = payload.email.toLowerCase().trim();
+        fullName = payload.name || 'Nova Patient';
+      } catch (gErr) {
+        console.error('[Google Auth] Verification failed on both Firebase and Google endpoints:', gErr.message);
+        return res.status(401).json({ message: 'Google authentication failed or token expired' });
+      }
+    }
 
     const client = await db.pool.connect();
     try {
