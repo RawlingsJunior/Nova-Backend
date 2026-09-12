@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { sendSMS } = require('../services/smsService');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 // Get SMS logs
 const getSMSLogs = async (req, res) => {
@@ -66,6 +67,13 @@ const sendBulkSMS = async (req, res) => {
     
     const successCount = results.filter(r => r.success).length;
 
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'SMS_BROADCAST',
+      details: { total: phoneNumbers.length, success: successCount, recipientsType: typeof recipients === 'string' ? recipients : 'custom_list' },
+      req
+    });
+
     res.json({ 
       message: `SMS batch processed. ${successCount}/${phoneNumbers.length} delivered successfully.`,
       details: { total: phoneNumbers.length, success: successCount, failed: phoneNumbers.length - successCount }
@@ -113,6 +121,13 @@ const deleteSMSLog = async (req, res) => {
 const clearSMSLogs = async (req, res) => {
   const { status } = req.query; // 'failed' | 'sent' | 'all'
   try {
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'SMS_LOGS_CLEARED',
+      details: { filterStatus: status || 'all' },
+      req
+    });
+
     if (status === 'failed') {
       await db.query("DELETE FROM sms_logs WHERE status = 'failed'");
       return res.json({ message: 'All failed SMS logs cleared successfully' });

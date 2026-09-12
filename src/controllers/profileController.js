@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 // GET own profile
 const getMyProfile = async (req, res) => {
@@ -148,12 +149,38 @@ const updateProfileByAdmin = async (req, res) => {
     }
 
     if (role) {
+      // Check role assignment authorization
+      const targetRoleRes = await db.query('SELECT role FROM user_roles WHERE user_id = $1', [req.params.id]);
+      const currentTargetRole = targetRoleRes.rows[0]?.role;
+
+      if (currentTargetRole === 'super_admin' && req.user.role !== 'super_admin') {
+        return res.status(403).json({ message: 'Access denied: Only Super Admin can modify Super Admin accounts.' });
+      }
+
+      if ((role === 'admin' || role === 'super_admin' || currentTargetRole === 'admin') && req.user.role !== 'super_admin') {
+        return res.status(403).json({ message: 'Access denied: Only Super Admin can assign or alter administrative roles.' });
+      }
+
       await db.query('DELETE FROM user_roles WHERE user_id = $1', [req.params.id]);
       await db.query(
         'INSERT INTO user_roles (user_id, role) VALUES ($1, $2)',
         [req.params.id, role]
       );
+
+      logAuditEvent({
+        userId: req.user.id,
+        action: 'ROLE_CHANGED',
+        details: { targetUserId: req.params.id, previousRole: currentTargetRole, newRole: role },
+        req
+      });
     }
+
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'ADMIN_PROFILE_UPDATED',
+      details: { targetUserId: req.params.id },
+      req
+    });
 
     res.json(result.rows[0]);
   } catch (err) {
@@ -170,13 +197,32 @@ const deleteProfileAndUser = async (req, res) => {
       return res.status(400).json({ message: 'You cannot delete your own admin account.' });
     }
 
+    // Role protection
+    const targetRoleRes = await db.query('SELECT role FROM user_roles WHERE user_id = $1', [id]);
+    const targetRole = targetRoleRes.rows[0]?.role;
+
+    if (targetRole === 'super_admin') {
+      return res.status(403).json({ message: 'Security restriction: Super Admin accounts cannot be deleted.' });
+    }
+    if (targetRole === 'admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied: Only Super Admin can delete administrator accounts.' });
+    }
+
     await db.query('UPDATE cms_content SET updated_by = NULL WHERE updated_by = $1', [id]);
     await db.query('UPDATE eye_screenings SET screened_by = NULL WHERE screened_by = $1', [id]);
 
-    const result = await db.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
+    const result = await db.query('DELETE FROM users WHERE id = $1 RETURNING id, email', [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
+
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'USER_DELETED',
+      details: { targetUserId: id, email: result.rows[0].email, role: targetRole },
+      req
+    });
+
     res.json({ message: 'User and all related records deleted successfully' });
   } catch (err) {
     console.error('deleteProfileAndUser error:', err);

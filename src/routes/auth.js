@@ -15,7 +15,7 @@ const {
   googleLogin
 } = require('../controllers/authController');
 const { getPendingAdmins, addPendingAdmin, removePendingAdmin } = require('../controllers/adminAuthController');
-const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { authMiddleware, adminMiddleware, superAdminMiddleware } = require('../middleware/auth');
 const { validate, registerValidation, loginValidation } = require('../middleware/validation');
 
 // Public Auth Routes
@@ -36,7 +36,7 @@ router.post('/update-password', authMiddleware, updatePassword);
 router.post('/admin-create-user', authMiddleware, adminMiddleware, adminCreateUser);
 router.post('/admin-reset-password', authMiddleware, adminMiddleware, adminResetPassword);
 router.get('/pending-admins', authMiddleware, adminMiddleware, getPendingAdmins);
-router.post('/pending-admins', authMiddleware, adminMiddleware, addPendingAdmin);
-router.delete('/pending-admins/:email', authMiddleware, adminMiddleware, removePendingAdmin);
+router.post('/pending-admins', authMiddleware, superAdminMiddleware, addPendingAdmin);
+router.delete('/pending-admins/:email', authMiddleware, superAdminMiddleware, removePendingAdmin);
 
 module.exports = router;

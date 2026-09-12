@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 const getPendingAdmins = async (req, res) => {
   try {
@@ -17,6 +18,12 @@ const addPendingAdmin = async (req, res) => {
       'INSERT INTO pending_admin_emails (email) VALUES ($1) ON CONFLICT (email) DO NOTHING RETURNING *',
       [email]
     );
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'ADMIN_PENDING_EMAIL_ADDED',
+      details: { email },
+      req
+    });
     res.status(201).json(result.rows[0] || { message: 'Email already in list' });
   } catch (err) {
     console.error(err);
@@ -28,6 +35,12 @@ const removePendingAdmin = async (req, res) => {
   const { email } = req.params;
   try {
     await db.query('DELETE FROM pending_admin_emails WHERE email = $1', [email]);
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'ADMIN_PENDING_EMAIL_REMOVED',
+      details: { email },
+      req
+    });
     res.json({ message: 'Email removed from pending admins' });
   } catch (err) {
     console.error(err);

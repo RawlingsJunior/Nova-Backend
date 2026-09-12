@@ -150,6 +150,7 @@ app.use('/api/prescriptions', require('./routes/prescriptions.js'));
 app.use('/api/invoices', require('./routes/invoices.js'));
 app.use('/api/media', require('./routes/media.js'));
 app.use('/api/sms', require('./routes/sms.js'));
+app.use('/api/system', require('./routes/system.js'));
 
 // 10. Static Uploads with HTTP Caching Headers (7 days cache)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {

@@ -175,13 +175,20 @@ const requireSelfOrAdmin = (paramKey = 'userId') => {
   };
 };
 
+/**
+ * Super Admin Middleware ("Overall Boss" only)
+ */
+const superAdminMiddleware = requireRole(['super_admin']);
+
 module.exports = {
   authMiddleware,
   optionalAuthMiddleware,
   requireRole,
   adminMiddleware,
+  superAdminMiddleware,
   clinicalStaffMiddleware,
   requirePermission,
   requireSelfOrAdmin,
   ROLE_PERMISSIONS
 };
+

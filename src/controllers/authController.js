@@ -6,6 +6,7 @@ const db = require('../config/db');
 const { sendSMS } = require('../services/smsService');
 const { sendEmail } = require('../services/emailService');
 const { notifyAdmins } = require('../services/adminNotificationService');
+const { logAuditEvent } = require('../lib/auditLogger');
 
 const register = async (req, res) => {
   const { 
@@ -202,9 +203,9 @@ const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    // Get user and their role
+    // Get user with lockout columns and their role
     const userQuery = `
-      SELECT u.id, u.email, u.password_hash, r.role, p.full_name, p.phone
+      SELECT u.id, u.email, u.password_hash, u.failed_login_attempts, u.locked_until, r.role, p.full_name, p.phone
       FROM users u
       LEFT JOIN user_roles r ON u.id = r.user_id
       LEFT JOIN profiles p ON u.id = p.id
@@ -214,37 +215,104 @@ const login = async (req, res) => {
     const user = await db.query(userQuery, [email]);
     
     if (user.rows.length === 0) {
+      logAuditEvent({
+        action: 'LOGIN_FAILED_UNKNOWN_USER',
+        details: { email },
+        req
+      });
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.rows[0].password_hash);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+    const userData = user.rows[0];
+
+    // Check account lockout status
+    if (userData.locked_until && new Date(userData.locked_until) > new Date()) {
+      const remainingMinutes = Math.max(1, Math.ceil((new Date(userData.locked_until).getTime() - Date.now()) / 60000));
+      logAuditEvent({
+        userId: userData.id,
+        action: 'LOGIN_BLOCKED_LOCKED',
+        details: { email, remainingMinutes },
+        req
+      });
+      return res.status(423).json({
+        message: `Account is temporarily locked due to excessive failed attempts. Please try again in ${remainingMinutes} minute(s) or contact Nova Eye Care support.`
+      });
     }
+
+    const isMatch = await bcrypt.compare(password, userData.password_hash);
+    if (!isMatch) {
+      const currentAttempts = (userData.failed_login_attempts || 0) + 1;
+      
+      if (currentAttempts >= 5) {
+        // Lock account for 15 minutes
+        await db.query(
+          `UPDATE users SET failed_login_attempts = $1, locked_until = NOW() + INTERVAL '15 minutes' WHERE id = $2`,
+          [currentAttempts, userData.id]
+        );
+        logAuditEvent({
+          userId: userData.id,
+          action: 'ACCOUNT_LOCKED',
+          details: { email, attempts: currentAttempts, lockDuration: '15 minutes' },
+          req
+        });
+        return res.status(423).json({
+          message: 'Account locked for 15 minutes due to 5 consecutive failed login attempts.'
+        });
+      } else {
+        await db.query(
+          `UPDATE users SET failed_login_attempts = $1 WHERE id = $2`,
+          [currentAttempts, userData.id]
+        );
+        logAuditEvent({
+          userId: userData.id,
+          action: 'LOGIN_FAILED',
+          details: { email, attempts: currentAttempts, attemptsRemaining: 5 - currentAttempts },
+          req
+        });
+        const remaining = 5 - currentAttempts;
+        return res.status(400).json({
+          message: `Invalid credentials. (${remaining} attempt${remaining === 1 ? '' : 's'} remaining before temporary account lockout)`
+        });
+      }
+    }
+
+    // Reset failed login attempts and unlock upon successful verification
+    if (userData.failed_login_attempts > 0 || userData.locked_until) {
+      await db.query(
+        `UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1`,
+        [userData.id]
+      );
+    }
+
+    logAuditEvent({
+      userId: userData.id,
+      action: 'LOGIN_SUCCESS',
+      details: { email: userData.email, role: userData.role },
+      req
+    });
 
     const payload = {
-      id: user.rows[0].id,
-      role: user.rows[0].role
+      id: userData.id,
+      role: userData.role
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
 
     // Admin Notification for user login
-    // We do this asynchronously, don't await to avoid slowing down login
     notifyAdmins(
       'User Login',
-      `${user.rows[0].full_name || email} has logged in.`,
+      `${userData.full_name || email} has logged in.`,
       'user_activity'
     );
 
     res.json({
       token,
       user: {
-        id: user.rows[0].id,
-        email: user.rows[0].email,
-        role: user.rows[0].role,
-        fullName: user.rows[0].full_name,
-        phone: user.rows[0].phone
+        id: userData.id,
+        email: userData.email,
+        role: userData.role,
+        fullName: userData.full_name,
+        phone: userData.phone
       }
     });
   } catch (err) {
@@ -330,14 +398,26 @@ const adminCreateUser = async (req, res) => {
       [userId, ocularHistory || '', systemicConditions || '', currentMedications || '', familyEyeHistory || '', allergies || '']
     );
 
-    // 6. Assign role
+    // 6. Assign role with Super Admin privilege protection
     const assignedRole = role || 'user';
+    if ((assignedRole === 'admin' || assignedRole === 'super_admin') && req.user.role !== 'super_admin') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ message: 'Access denied: Only Super Admin can create administrator accounts.' });
+    }
+
     await client.query(
       'INSERT INTO user_roles (user_id, role) VALUES ($1, $2)',
       [userId, assignedRole]
     );
 
     await client.query('COMMIT');
+
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'ADMIN_USER_CREATED',
+      details: { targetUserId: userId, email, role: assignedRole },
+      req
+    });
 
     res.status(201).json({
       message: 'User created successfully',
@@ -367,12 +447,34 @@ const adminResetPassword = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Role protection: Only super_admin can reset super_admin or admin passwords
+    const targetRoleRes = await db.query('SELECT role FROM user_roles WHERE user_id = $1', [userId]);
+    const targetRole = targetRoleRes.rows[0]?.role;
+
+    if (targetRole === 'super_admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied: Only Super Admin can reset Super Admin passwords.' });
+    }
+    if (targetRole === 'admin' && req.user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Access denied: Only Super Admin can reset Administrator passwords.' });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, userId]);
+    // Update password and clear any lockout status
+    await db.query(
+      'UPDATE users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedPassword, userId]
+    );
 
-    res.json({ message: 'Password reset successfully' });
+    logAuditEvent({
+      userId: req.user.id,
+      action: 'ADMIN_PASSWORD_RESET',
+      details: { targetUserId: userId, targetRole },
+      req
+    });
+
+    res.json({ message: 'Password reset successfully and account unlocked' });
   } catch (err) {
     console.error(err);
     res.status(500).send('Server error');

@@ -116,6 +116,24 @@ const initializeDatabase = async () => {
       );
     `);
 
+    // Security & lockout fields for brute-force attack prevention
+    await db.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INT DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP WITH TIME ZONE;
+    `);
+
+    // Audit logs table for tracking security events, role changes, lockouts, and logins
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id SERIAL PRIMARY KEY,
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        details JSONB,
+        ip TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Ensure high-performance indexes exist for 5000+ users scale
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_appointments_user_id ON appointments(user_id);
@@ -129,9 +147,12 @@ const initializeDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_eye_screenings_patient ON eye_screenings(patient_id, screening_date DESC);
       CREATE INDEX IF NOT EXISTS idx_sms_logs_status_created ON sms_logs(status, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_reviews_approved ON reviews(approved, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+      CREATE INDEX IF NOT EXISTS idx_users_locked ON users(locked_until);
     `);
 
-    // Ensure default admin account exists with seeded credentials
+    // Ensure default Super Admin account exists with seeded credentials
     const adminClient = await db.pool.connect();
     try {
       await adminClient.query('BEGIN');
@@ -148,7 +169,7 @@ const initializeDatabase = async () => {
       if (existingAdmin.rows.length > 0) {
         adminUserId = existingAdmin.rows[0].id;
         await adminClient.query(
-          'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          'UPDATE users SET password_hash = $1, failed_login_attempts = 0, locked_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
           [passwordHash, adminUserId]
         );
       } else {
@@ -170,10 +191,10 @@ const initializeDatabase = async () => {
         [adminUserId, DEFAULT_ADMIN_NAME, DEFAULT_ADMIN_EMAIL]
       );
 
+      // Upgrade/Ensure Super Admin tier for overall boss
+      await adminClient.query('DELETE FROM user_roles WHERE user_id = $1', [adminUserId]);
       await adminClient.query(
-        `INSERT INTO user_roles (user_id, role)
-         VALUES ($1, 'admin')
-         ON CONFLICT (user_id, role) DO NOTHING`,
+        `INSERT INTO user_roles (user_id, role) VALUES ($1, 'super_admin')`,
         [adminUserId]
       );
 
@@ -185,7 +206,7 @@ const initializeDatabase = async () => {
       );
 
       await adminClient.query('COMMIT');
-      console.log(`Default admin account seeded: ${DEFAULT_ADMIN_EMAIL}`);
+      console.log(`Default super admin ("overall boss") account seeded: ${DEFAULT_ADMIN_EMAIL}`);
     } catch (seedErr) {
       await adminClient.query('ROLLBACK');
       throw seedErr;
