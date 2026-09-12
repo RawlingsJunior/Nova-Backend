@@ -53,7 +53,8 @@ const updateProfile = async (req, res) => {
 
 const getAllUsers = async (req, res) => {
   try {
-    const query = `
+    const { role } = req.query;
+    let query = `
       SELECT 
         p.id, p.full_name, p.email, p.phone, r.role, p.created_at,
         COALESCE(appts.cnt, 0)::int as appointment_count
@@ -65,9 +66,17 @@ const getAllUsers = async (req, res) => {
         WHERE user_id IS NOT NULL 
         GROUP BY user_id
       ) appts ON appts.user_id = p.id
-      ORDER BY p.created_at DESC`;
+    `;
+    const params = [];
+    if (role === 'patient') {
+      query += ` WHERE (r.role NOT IN ('admin', 'super_admin') OR r.role IS NULL) `;
+    } else if (role === 'admin') {
+      query += ` WHERE r.role IN ('admin', 'super_admin') `;
+    }
+    query += ` ORDER BY p.created_at DESC`;
     
-    const result = await db.query(query);
+    /** @type {any} */
+    const result = await db.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error(err);

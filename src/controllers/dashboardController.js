@@ -26,7 +26,11 @@ const getAdminStats = async (req, res) => {
       }
     };
 
-    stats.summary.totalUsers = await getCount('SELECT COUNT(*) FROM profiles');
+    stats.summary.totalUsers = await getCount(`
+      SELECT COUNT(*) FROM profiles p 
+      LEFT JOIN user_roles ur ON p.id = ur.user_id 
+      WHERE ur.role NOT IN ('admin', 'super_admin') OR ur.role IS NULL
+    `);
     stats.summary.totalAppointments = await getCount('SELECT COUNT(*) FROM appointments');
     stats.summary.pendingAppointments = await getCount("SELECT COUNT(*) FROM appointments WHERE status = 'pending'");
     

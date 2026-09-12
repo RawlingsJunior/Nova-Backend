@@ -70,16 +70,26 @@ const updateMyProfile = async (req, res) => {
   }
 };
 
-// Admin: GET all profiles
+// Admin: GET all profiles (supports ?role=patient or ?role=admin)
 const getAllProfiles = async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT p.*, ur.role, u.email as user_email
-       FROM profiles p
-       LEFT JOIN user_roles ur ON p.id = ur.user_id
-       LEFT JOIN users u ON p.id = u.id
-       ORDER BY p.created_at DESC`
-    );
+    const { role } = req.query;
+    let query = `
+      SELECT p.*, ur.role, u.email as user_email
+      FROM profiles p
+      LEFT JOIN user_roles ur ON p.id = ur.user_id
+      LEFT JOIN users u ON p.id = u.id
+    `;
+    const params = [];
+    if (role === 'patient') {
+      query += ` WHERE (ur.role NOT IN ('admin', 'super_admin') OR ur.role IS NULL) `;
+    } else if (role === 'admin') {
+      query += ` WHERE ur.role IN ('admin', 'super_admin') `;
+    }
+    query += ` ORDER BY p.created_at DESC`;
+
+    /** @type {any} */
+    const result = await db.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error('getAllProfiles error:', err);

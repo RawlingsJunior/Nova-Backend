@@ -26,15 +26,32 @@ const sendBulkSMS = async (req, res) => {
 
     if (recipients === 'all') {
       /** @type {any} */
-      const result = await db.query("SELECT phone FROM profiles WHERE phone IS NOT NULL AND TRIM(phone) != ''");
+      const result = await db.query(`
+        SELECT p.phone FROM profiles p
+        LEFT JOIN user_roles ur ON p.id = ur.user_id
+        WHERE p.phone IS NOT NULL AND TRIM(p.phone) != ''
+          AND (ur.role NOT IN ('admin', 'super_admin') OR ur.role IS NULL)
+      `);
       phoneNumbers = result.rows.map(r => r.phone);
     } else if (recipients === 'registered') {
       /** @type {any} */
-      const result = await db.query("SELECT phone FROM profiles WHERE phone IS NOT NULL AND TRIM(phone) != '' AND registration_completed = TRUE");
+      const result = await db.query(`
+        SELECT p.phone FROM profiles p
+        LEFT JOIN user_roles ur ON p.id = ur.user_id
+        WHERE p.phone IS NOT NULL AND TRIM(p.phone) != '' 
+          AND p.registration_completed = TRUE
+          AND (ur.role NOT IN ('admin', 'super_admin') OR ur.role IS NULL)
+      `);
       phoneNumbers = result.rows.map(r => r.phone);
     } else if (recipients === 'pending_registration') {
       /** @type {any} */
-      const result = await db.query("SELECT phone FROM profiles WHERE phone IS NOT NULL AND TRIM(phone) != '' AND (registration_completed IS FALSE OR registration_completed IS NULL)");
+      const result = await db.query(`
+        SELECT p.phone FROM profiles p
+        LEFT JOIN user_roles ur ON p.id = ur.user_id
+        WHERE p.phone IS NOT NULL AND TRIM(p.phone) != '' 
+          AND (p.registration_completed IS FALSE OR p.registration_completed IS NULL)
+          AND (ur.role NOT IN ('admin', 'super_admin') OR ur.role IS NULL)
+      `);
       phoneNumbers = result.rows.map(r => r.phone);
     } else if (recipients === 'appointments') {
       /** @type {any} */
