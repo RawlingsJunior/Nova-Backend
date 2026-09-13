@@ -13,8 +13,8 @@ const { validate, appointmentValidation } = require('../middleware/validation');
 router.get('/available-slots', getAvailableSlots);
 
 // @route   POST api/appointments
-// @desc    Book a new appointment (Open or Authenticated)
-router.post('/', appointmentValidation, validate, optionalAuthMiddleware, createAppointment);
+// @desc    Book a new appointment (Requires Authentication)
+router.post('/', appointmentValidation, validate, authMiddleware, createAppointment);
 
 // @route   GET api/appointments
 // @desc    Get all appointments (Admin) or user's appointments (User)

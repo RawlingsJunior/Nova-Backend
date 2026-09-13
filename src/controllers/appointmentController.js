@@ -54,7 +54,10 @@ const getAppointmentById = async (req, res) => {
 
 const createAppointment = async (req, res) => {
   const { fullName, phone, email, service, appointmentDate, appointmentTime, notes, appointmentType, doctorName } = req.body;
-  const userId = req.user ? req.user.id : null;
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'You must create an account and log in before booking an appointment.' });
+  }
+  const userId = req.user.id;
 
   try {
     /** @type {any} */
