@@ -247,11 +247,11 @@ const chatWithAI = async (req, res) => {
       console.error('Failed to query knowledge base:', dbErr);
       kbResult = { rows: [] };
     }
-    const kbEntries = kbResult.rows || [];
+    const kbEntries = /** @type {any[]} */ (kbResult.rows || []);
     let kbContent = '';
     if (kbEntries.length > 0) {
       kbContent = '\n\nCURATED CLINIC KNOWLEDGE BASE:\n' +
-        kbEntries.map(k => `Q: ${k.question}\nA: ${k.answer}`).join('\n\n');
+        kbEntries.map((/** @type {any} */ k) => `Q: ${k.question}\nA: ${k.answer}`).join('\n\n');
     }
 
     // 2. Retrieve Clinic Settings
@@ -267,7 +267,7 @@ const chatWithAI = async (req, res) => {
     try {
       const settingsResult = await db.query('SELECT * FROM clinic_settings LIMIT 1');
       if (settingsResult.rows && settingsResult.rows.length > 0) {
-        const s = settingsResult.rows[0];
+        const s = /** @type {any} */ (settingsResult.rows[0]);
         if (s.address) clinicAddress = s.address;
         clinicData.name = s.clinic_name || clinicData.name;
         clinicData.phone = s.contact_phone || clinicData.phone;
@@ -295,9 +295,9 @@ const chatWithAI = async (req, res) => {
     try {
       const servicesResult = await db.query('SELECT name, description, price FROM services WHERE is_active = true ORDER BY name ASC');
       if (servicesResult.rows && servicesResult.rows.length > 0) {
-        servicesList = servicesResult.rows;
+        servicesList = /** @type {any[]} */ (servicesResult.rows);
         servicesInfo += '\n\nDYNAMIC CLINIC SERVICES CATALOG:\n';
-        servicesList.forEach(s => {
+        servicesList.forEach((/** @type {any} */ s) => {
           servicesInfo += `- Service: ${s.name}\n  Description: ${s.description || 'Professional eye care'}\n  Fee: ${s.price ? 'GHS ' + parseFloat(s.price).toFixed(2) : 'Contact clinic'}\n`;
         });
       }
