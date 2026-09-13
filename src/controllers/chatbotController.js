@@ -78,8 +78,26 @@ const deleteKnowledge = async (req, res) => {
   }
 };
 
-const BASE_PROMPT = `You are "NOVA", the expert AI Clinical Care Concierge for NOVA Eye Care Services in Abuakwa, Ghana.
+const BASE_PROMPT = `You are "NOVA", the expert AI Clinical Care Concierge for NOVA Eye Care Services in Abuakwa, Kumasi, Ghana.
 Your tone: Warm, empathetic, medically professional, and encouraging. You speak as a caring healthcare concierge representing licensed optometrists.
+
+MULTILINGUAL & TWI (ASANTE TWI / AKAN) FLUENCY:
+- You are completely bilingual in English and Ghanaian Asante Twi (Akan).
+- When a patient communicates in Twi, writes in Twi, or when the request language is 'twi', you MUST respond fluently and naturally in authentic Asante Twi (Akan).
+- Use respectful Ghanaian phrasing and greetings: "Akwaaba!" (Welcome), "Mema wo akye/aha/adwo" (Good morning/afternoon/evening), "Yɛsrɛ wo" (Please), "Medaase" (Thank you).
+- Key optometric Twi vocabulary:
+  * Eye / Eyes = Ani
+  * Eye examination / checkup = Ani nhwehwɛmu
+  * Blurry vision = Ani so a ɛyɛ wusiwusi / M'ani so ayɛ me wusiwusi
+  * Eye pain / irritation = Ani mu ya / Ani a ɛhye / Ani a ɛkeka
+  * Glaucoma = Ani mu nhyɛsoɔ / Glaucoma
+  * Cataract = Ani so nsuo / Cataract
+  * Eyeglasses / Spectacles = Ani ahwehwɛ
+  * Contact lenses = Ani so ahwehwɛ nketewa
+  * DVLA driver license eye test = DVLA kwan so ani sɔhwɛ
+  * Book appointment = Fa beaeɛ to hɔ ma ani dɔkota / Kyerɛw wo din
+  * Price / Fee = Boɔ a yɛgye / Sika a wobɛtua
+  * Abuakwa Clinic location = Abuakwa beaeɛ a yɛwɔ (Kan Royal Filling Station nkyɛn)
 
 PRIMARY MISSION:
 Provide accurate, friendly optometric guidance, triage patient visual concerns, explain services and pricing, and guide patients to schedule appointments.
@@ -99,7 +117,7 @@ INTERACTION GUIDELINES:
 - Keep responses conversational, helpful, and concise (2-4 concise paragraphs max).
 - Use clear markdown with bold headers and bullet points for readability.
 - When suggesting an appointment or contacting the clinic, include markdown links:
-  - [Book Appointment](/book)
+  - [Book Appointment](/book) (or in Twi: [Fa Beaeɛ To Hɔ Seesei](/book))
   - [Call +233 54 417 2089](tel:0544172089)
 - Always use the DYNAMIC CLINIC INFORMATION and DYNAMIC SERVICES below as ground truth for pricing, hours, and location.
 - Never invent unlisted services or prescribe medications (antibiotics/steroids). Always emphasize comprehensive in-person examination.`;
@@ -133,40 +151,65 @@ const fetchGoogleMapsDirections = async (startAddr, endAddr) => {
 };
 
 /**
- * Local Semantic NLP Matcher Fallback Engine.
- * If external Gemini LLM APIs are unreachable or rate limited,
- * this engine performs intent scoring and token similarity matching over the knowledge base and services.
+ * Local Semantic NLP Matcher Fallback Engine with English & Asante Twi support.
  */
-function localNLPMatcher(userQuery, clinicData, servicesList, kbList) {
+function localNLPMatcher(userQuery, clinicData, servicesList, kbList, lang = 'en') {
   const q = (userQuery || '').toLowerCase();
+  const isTwi = lang === 'twi' || 
+    ['akwaaba', 'ani', 'm\'ani', 'nhwehwɛmu', 'sika', 'ahe', 'boɔ', 'beaeɛ', 'dɔkota', 'wusiwusi', 'hye', 'keka', 'nsuo', 'ahwehwɛ', 'ɛte sɛn', 'mema wo'].some(w => q.includes(w));
   const tokens = q.replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 2);
 
   // 1. Emergency Detection
-  const emergencyWords = ['emergency', 'chemical', 'bleach', 'acid', 'blind', 'detached', 'curtain', 'severe pain', 'blood', 'trauma', 'burst'];
+  const emergencyWords = ['emergency', 'chemical', 'bleach', 'acid', 'blind', 'detached', 'curtain', 'severe pain', 'blood', 'trauma', 'burst', 'anifura', 'mogya', 'egyina'];
   if (emergencyWords.some(w => q.includes(w))) {
+    if (isTwi) {
+      return `🚨 **NTƐMPA ANI HUHOƆ ASƐM (EMERGENCY)**\n\nSɛ w'ani afura prɛko pɛ, biribi a ɛyɛ borɔ / chemical agye w'ani so, anaa w'ani mu reyɛ wo ya kɛseɛ a:\n\n* **Nsuo**: Hohoroo w'ani so ntɛm ara ne nsu pa bɛyɛ sima 15.\n* **Frɛ asopiti ntɛm**: Frɛ yɛn ahwɛfoɔ ntɛm ara wɔ **${clinicData.phone || '+233 54 417 2089'}** anaa kɔ ayaresabea a ɛbɛn wo.\n\nYɛn ani dɔkotafoɔ wɔ Abuakwa bɛtumi ahwɛ wo ntɛm pa ara.`;
+    }
     return `🚨 **URGENT MEDICAL NOTICE**\n\nIf you are experiencing sudden vision loss, severe ocular pain, or a chemical splash, please seek immediate emergency care:\n\n* **Chemicals in eye**: Immediately flush with clean water continuously for 15 minutes.\n* **Immediate Clinic Contact**: Call our urgent line directly at **${clinicData.phone || '+233 54 417 2089'}** or visit the nearest emergency hospital.\n\nOur optometrists at Nova Eye Care Abuakwa are available for urgent ocular evaluations.`;
   }
 
   // 2. DVLA Eye Testing
-  if (q.includes('dvla') || q.includes('driver') || q.includes('license') || q.includes('driving')) {
+  if (q.includes('dvla') || q.includes('driver') || q.includes('license') || q.includes('driving') || q.includes('laseense') || q.includes('drayva')) {
+    if (isTwi) {
+      return `🚗 **DVLA Kwan So Ani Sɔhwɛ wɔ Nova Eye Care**\n\nAane! Yɛwɔ tumi krataa a yɛde yɛ **DVLA Laseense Ani Sɔhwɛ** ma drayvafoɔ nyinaa wɔ Ghana.\n\n* **Nea yɛsɔ hwɛ**: Sɛdeɛ w'ani hu adeɛ kɔ akyiri ne kɔla ahodoɔ.\n* **Mmrɛ a ɛgye**: Sima 15–20 pɛ na yɛde krataa no ama wo ntɛm.\n* **Boɔ**: GHS 30.00 pɛ.\n\n👉 [Fa Beaeɛ To Hɔ ma DVLA Sɔhwɛ](/book) anaa frɛ yɛn wɔ **${clinicData.phone || '+233 54 417 2089'}**.`;
+    }
     return `🚗 **DVLA Eye Testing at Nova Eye Care**\n\nYes! We are officially authorized for **DVLA Driver License Eye Testing** in Ghana.\n\n* **What we test**: Visual acuity, color perception, and visual fields.\n* **Turnaround**: Certified test report issued immediately upon completion (takes ~15–20 minutes).\n* **Fee**: GHS 30.00.\n\n👉 [Book DVLA Eye Test](/book) or call us at **${clinicData.phone || '+233 54 417 2089'}**.`;
   }
 
   // 3. Location & Directions
-  if (q.includes('location') || q.includes('address') || q.includes('where') || q.includes('direction') || q.includes('abuakwa') || q.includes('gps') || q.includes('find you')) {
+  if (q.includes('location') || q.includes('address') || q.includes('where') || q.includes('direction') || q.includes('abuakwa') || q.includes('gps') || q.includes('find you') || q.includes('beaeɛ') || q.includes('ɛhe') || q.includes('kwan')) {
+    if (isTwi) {
+      return `📍 **Nova Eye Care Beaeɛ a Yɛwɔ wɔ Abuakwa**\n\n* **Beaeɛ**: ${clinicData.address}\n* **GPS Digital Address**: AH-1192-7988 / AH-1192-8485\n* **Agyiraehyɛdeɛ**: Kan Royal Filling Station nkyɛn pɛɛ wɔ Abuakwa, Ashanti Region.\n* **Telefon**: ${clinicData.phone || '+233 54 417 2089'}\n\nWobɛtumi afiri Kumasi abɛpue ha ntɛm pa ara wɔ Sunyani kwan no so.\n👉 [Fa Beaeɛ To Hɔ ma Ani Nhwehwɛmu](/book)`;
+    }
     return `📍 **Nova Eye Care Clinic Location**\n\n* **Address**: ${clinicData.address}\n* **GPS Digital Address**: AH-1192-7988 / AH-1192-8485\n* **Landmark**: Near Kan Royal Filling Station, Abuakwa, Ashanti Region.\n* **Contact**: ${clinicData.phone || '+233 54 417 2089'}\n\nOur clinic is easily accessible from Kumasi via the Sunyani / Abuakwa main road.\n👉 [Book an In-Person Consultation](/book)`;
   }
 
   // 4. Opening Hours
-  if (q.includes('hour') || q.includes('open') || q.includes('close') || q.includes('time') || q.includes('weekend') || q.includes('saturday') || q.includes('sunday')) {
+  if (q.includes('hour') || q.includes('open') || q.includes('close') || q.includes('time') || q.includes('weekend') || q.includes('saturday') || q.includes('sunday') || q.includes('mmrɛ') || q.includes('dɔn') || q.includes('bue')) {
+    if (isTwi) {
+      return `⏰ **Mmrɛ a Yɛbue Asopiti no**\n\n* **Ɛdwoada kɔsi Efiada: 8:00 AM – 5:00 PM**\n* **Memeneda: 9:00 AM – 2:00 PM**\n* **Kwasiada: Yɛato mu**\n\nWobɛtumi aba bere biara a yɛbue, anaa fa beaeɛ to hɔ wɔ intanɛte so.\n👉 [Fa Beaeɛ To Hɔ Seesei](/book)`;
+    }
     return `⏰ **Clinic Opening Hours**\n\n* **${clinicData.openingHours || 'Monday – Friday: 8:00 AM – 5:00 PM | Saturday: 9:00 AM – 2:00 PM | Sunday: Closed'}**\n* Walk-ins and scheduled appointments are welcome during opening hours.\n\n👉 [Book an Appointment Now](/book)`;
   }
 
   // 5. Pricing & Services Inquiry
-  if (q.includes('price') || q.includes('cost') || q.includes('how much') || q.includes('fee') || q.includes('charges') || q.includes('services')) {
+  if (q.includes('price') || q.includes('cost') || q.includes('how much') || q.includes('fee') || q.includes('charges') || q.includes('services') || q.includes('boɔ') || q.includes('sika') || q.includes('ahe')) {
+    if (isTwi) {
+      let serviceText = `📋 **Yɛn Ani Dwumadi ne Boɔ a Yɛgye**\n\n`;
+      if (servicesList.length > 0) {
+        servicesList.forEach((/** @type {any} */ s) => {
+          serviceText += `* **${s.name}**: ${s.price ? `GHS ${parseFloat(s.price).toFixed(2)}` : 'Frɛ yɛn ma boɔ'}\n`;
+        });
+      } else {
+        serviceText += `* **General Eye Examination (Ani Nhwehwɛmu)**: GHS 50.00\n* **DVLA Eye Test (DVLA Ani Sɔhwɛ)**: GHS 30.00\n* **Contact Lens Fitting (Ani So Ahwehwɛ)**: GHS 70.00\n* **Glaucoma Screening (Ani Mu Nhyɛsoɔ)**: GHS 60.00\n`;
+      }
+      serviceText += `\nYɛgye Mobile Money (MTN MoMo, Telecel Cash) ne Sika kɔkɔɔ (Cash).\n👉 [Fa Beaeɛ To Hɔ wɔ Intanɛte So](/book) anaa frɛ **${clinicData.phone || '+233 54 417 2089'}**.`;
+      return serviceText;
+    }
+
     let serviceText = `📋 **Our Clinical Services & Pricing**\n\n`;
     if (servicesList.length > 0) {
-      servicesList.forEach(s => {
+      servicesList.forEach((/** @type {any} */ s) => {
         serviceText += `* **${s.name}**: ${s.price ? `GHS ${parseFloat(s.price).toFixed(2)}` : 'Contact clinic'}\n`;
       });
     } else {
@@ -177,7 +220,10 @@ function localNLPMatcher(userQuery, clinicData, servicesList, kbList) {
   }
 
   // 6. Booking Inquiry
-  if (q.includes('book') || q.includes('appointment') || q.includes('schedule') || q.includes('reserve')) {
+  if (q.includes('book') || q.includes('appointment') || q.includes('schedule') || q.includes('reserve') || q.includes('kyerɛw') || q.includes('to hɔ')) {
+    if (isTwi) {
+      return `📅 **Kyerɛw Wo Din ma Ani Nhwehwɛmu**\n\nSɛ wobɛfa beaeɛ ato hɔ wɔ Nova Eye Care a, ɛnyɛ den koraa:\n\n1. Klike **[Fa Beaeɛ To Hɔ](/book)** a ɛwɔ ha no.\n2. Fa dwumadi a worepɛ, dɔkota, ne da a ɛfata wo to hɔ.\n3. Yɛbɛmane wo SMS ne email de ahyɛ wo bɔ seesei ara.\n\nSɛ worepɛ mmoa a, frɛ yɛn ntɛm wɔ **${clinicData.phone || '+233 54 417 2089'}**.`;
+    }
     return `📅 **Schedule Your Eye Exam**\n\nBooking with Nova Eye Care is quick and easy:\n\n1. Click the **[Book Appointment](/book)** button here or at the top of the page.\n2. Choose your preferred service, optometrist, date, and time.\n3. You will receive an instant confirmation SMS and email.\n\nNeed assistance? Call us directly at **${clinicData.phone || '+233 54 417 2089'}**.`;
   }
 
@@ -202,6 +248,10 @@ function localNLPMatcher(userQuery, clinicData, servicesList, kbList) {
   }
 
   // 8. General Health Concierge Default
+  if (isTwi) {
+    return `Akwaaba! 👋 Medaase sɛ woaba **Nova Eye Care Services**.\n\nYɛwɔ Abuakwa na yɛbɛtumi aboa wo wɔ ani nhwehwɛmu, ahwehwɛ a ɛsɛ w'ani, glaucoma sɔhwɛ, ne DVLA kwan so ani sɔhwɛ nyinaa ho.\n\nWobɛpɛ sɛ meboa wo wɔ dɛn ho nnɛ?\n* Wobɛtumi abisa me fa **boɔ a yɛgye**, **beaeɛ a yɛwɔ**, anaa **w'ani a ɛreyɛ wo ya** ho.\n\n👉 [Fa Beaeɛ To Hɔ ma Dɔkota](/book) anaa frɛ yɛn wɔ **${clinicData.phone || '+233 54 417 2089'}**.`;
+  }
+
   return `Hello! 👋 Thank you for contacting **Nova Eye Care Services**.\n\nWe provide complete vision exams, contact lens fittings, glaucoma screenings, and DVLA eye certification in Abuakwa.\n\nHow may we assist you today?\n* You can ask about our **services & prices**, **opening hours**, **clinic location**, or **eye symptoms**.\n\n👉 [Book an Appointment Online](/book) or call us at **${clinicData.phone || '+233 54 417 2089'}**.`;
 }
 
@@ -232,7 +282,7 @@ async function streamLocalResponse(res, text) {
 
 const chatWithAI = async (req, res) => {
   try {
-    const { messages } = req.body;
+    const { messages, lang = 'en' } = req.body;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Invalid body: messages array is required' });
     }
@@ -308,7 +358,7 @@ const chatWithAI = async (req, res) => {
     // 4. Live Google Maps Integration (SerpApi)
     let mapsContext = '';
     try {
-      const locationKeywords = ['location', 'address', 'directions', 'how to get', 'where is', 'find you', 'landmark', 'map', 'gps', 'abuakwa'];
+      const locationKeywords = ['location', 'address', 'directions', 'how to get', 'where is', 'find you', 'landmark', 'map', 'gps', 'abuakwa', 'beaeɛ', 'ɛhe'];
       const isLocationQuery = locationKeywords.some(keyword => lastUserMessage.toLowerCase().includes(keyword));
 
       if (isLocationQuery && process.env.SERPAPI_API_KEY) {
@@ -352,7 +402,11 @@ const chatWithAI = async (req, res) => {
       console.error('Failed to query SerpApi for maps info:', mapsErr);
     }
 
-    const systemPrompt = `${BASE_PROMPT}${clinicInfo}${servicesInfo}${mapsContext}${kbContent}\n\nIMPORTANT: Maintain the highest standard of empathy and clinical clarity. If recommending an exam, always provide a link to [Book Appointment](/book).`;
+    const languageInstruction = (lang === 'twi') 
+      ? '\n\nIMPORTANT LANGUAGE REQUIREMENT: The user has selected Asante Twi. You MUST answer exclusively in natural, warm, respectful Asante Twi (Akan).'
+      : '\n\nLANGUAGE ADAPTATION: If the user speaks or writes in Twi, answer in Asante Twi. If English, answer in English.';
+
+    const systemPrompt = `${BASE_PROMPT}${languageInstruction}${clinicInfo}${servicesInfo}${mapsContext}${kbContent}\n\nIMPORTANT: Maintain the highest standard of empathy and clinical clarity. If recommending an exam, always provide a link to [Book Appointment](/book).`;
 
     const apiKey = process.env.CHAT_API_KEY || process.env.GEMINI_API_KEY;
 
@@ -382,7 +436,6 @@ const chatWithAI = async (req, res) => {
           });
 
           if (aiResponse.ok && aiResponse.body) {
-            // Set streaming headers
             res.setHeader('Content-Type', 'text/event-stream');
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
@@ -403,13 +456,15 @@ const chatWithAI = async (req, res) => {
 
     // If external AI models fail or API key is absent, use our Local Semantic NLP Engine
     console.info('Switching to local semantic NLP engine fallback for response...');
-    const localAnswer = localNLPMatcher(lastUserMessage, clinicData, servicesList, kbEntries);
+    const localAnswer = localNLPMatcher(lastUserMessage, clinicData, servicesList, kbEntries, lang);
     return await streamLocalResponse(res, localAnswer);
 
   } catch (err) {
     console.error('Global Chat Exception:', err);
     if (!res.headersSent) {
-      const fallbackMsg = `Hello! 👋 Thank you for contacting Nova Eye Care. We are here to help you see better and live brighter. Please call our clinic directly at +233 54 417 2089 or [Book an Appointment Online](/book).`;
+      const fallbackMsg = (req.body?.lang === 'twi')
+        ? `Akwaaba! 👋 Medaase sɛ woaba Nova Eye Care. Yɛwɔ ha sɛ yɛbɛboa wo ama w'ani ahu adeɛ yie. Yɛsrɛ wo, frɛ yɛn asopiti no tee wɔ +233 54 417 2089 anaa [Fa Beaeɛ To Hɔ wɔ Intanɛte So](/book).`
+        : `Hello! 👋 Thank you for contacting Nova Eye Care. We are here to help you see better and live brighter. Please call our clinic directly at +233 54 417 2089 or [Book an Appointment Online](/book).`;
       return await streamLocalResponse(res, fallbackMsg);
     }
     res.end();
